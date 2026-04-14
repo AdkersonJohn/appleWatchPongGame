@@ -33,6 +33,13 @@ final class GameState: ObservableObject {
         ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
     }
 
+    func update(dt: CGFloat) {
+        guard phase == .playing else { return }
+
+        ball.position.x += ball.velocity.dx * dt
+        ball.position.y += ball.velocity.dy * dt
+    }
+
     private func randomInitialVelocity(speed: CGFloat) -> CGVector {
         // Angle between 30° and 60° off vertical, random quadrant
         let angle = CGFloat.random(in: (.pi / 6)...(.pi / 3))
