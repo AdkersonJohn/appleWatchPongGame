@@ -269,4 +269,24 @@ final class GameStateTests: XCTestCase {
         state.setPlayerPaddle(normalizedCrown: 0.5)
         XCTAssertEqual(state.playerPaddleX, 0.5, accuracy: 0.0001)
     }
+
+    func test_gameOverUpdatesHighScore() {
+        let suiteName = "GameStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = HighScoreStore(defaults: defaults)
+        let state = GameState(highScoreStore: store)
+        state.phase = .playing
+        state.score = 15
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: 1.01),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.01)
+
+        XCTAssertEqual(state.phase, .gameOver)
+        XCTAssertEqual(store.current, 15)
+    }
 }

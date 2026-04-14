@@ -10,8 +10,10 @@ final class GameState: ObservableObject {
     @Published var score: Int = 0
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
+    private let highScoreStore: HighScoreStore
 
-    init() {
+    init(highScoreStore: HighScoreStore = HighScoreStore()) {
+        self.highScoreStore = highScoreStore
         self.ball = Ball(position: CGPoint(x: 0.5, y: 0.5),
                          velocity: .zero)
         self.playerPaddleX = 0.5
@@ -104,6 +106,7 @@ final class GameState: ObservableObject {
         // Ball exits bottom — game over
         if ball.position.y > 1.0 {
             phase = .gameOver
+            highScoreStore.updateIfHigher(newScore: score)
         }
     }
 
