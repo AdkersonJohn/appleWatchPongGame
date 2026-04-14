@@ -77,4 +77,56 @@ final class GameStateTests: XCTestCase {
         XCTAssertLessThan(state.ball.velocity.dx, 0, "Velocity.dx should flip to negative")
         XCTAssertLessThanOrEqual(state.ball.position.x, 1.0 - GameConstants.ballRadius)
     }
+
+    func test_ballHitsPlayerPaddleAndBouncesUp() {
+        let state = GameState()
+        state.phase = .playing
+        state.playerPaddleX = 0.5
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        // Ball just above paddle, moving down into it
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.05)
+
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "Should bounce upward")
+        XCTAssertEqual(state.score, 1)
+    }
+
+    func test_ballMissesPlayerPaddleWhenOffsetHorizontally() {
+        let state = GameState()
+        state.phase = .playing
+        state.playerPaddleX = 0.2  // Paddle on left
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        // Ball at x=0.8, clearly not above paddle
+        state.ball = Ball(
+            position: CGPoint(x: 0.8, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.05)
+
+        XCTAssertGreaterThan(state.ball.velocity.dy, 0, "Ball should keep moving down")
+        XCTAssertEqual(state.score, 0)
+    }
+
+    func test_ballHitEdgeOfPaddleDeflectsAtAngle() {
+        let state = GameState()
+        state.phase = .playing
+        state.playerPaddleX = 0.5
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        // Hit the right edge of the paddle
+        let hitX = 0.5 + GameConstants.paddleWidth / 2 - 0.005
+        state.ball = Ball(
+            position: CGPoint(x: hitX, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.05)
+
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "Bounces up")
+        XCTAssertGreaterThan(state.ball.velocity.dx, 0, "Deflects to the right")
+    }
 }
