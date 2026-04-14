@@ -251,4 +251,22 @@ final class GameStateTests: XCTestCase {
         let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
         XCTAssertLessThanOrEqual(newSpeed, GameConstants.maxBallSpeed + 0.0001)
     }
+
+    func test_setPlayerPaddleClampsToLeft() {
+        let state = GameState()
+        state.setPlayerPaddle(normalizedCrown: -0.2)
+        XCTAssertEqual(state.playerPaddleX, GameConstants.paddleWidth / 2, accuracy: 0.0001)
+    }
+
+    func test_setPlayerPaddleClampsToRight() {
+        let state = GameState()
+        state.setPlayerPaddle(normalizedCrown: 1.2)
+        XCTAssertEqual(state.playerPaddleX, 1 - GameConstants.paddleWidth / 2, accuracy: 0.0001)
+    }
+
+    func test_setPlayerPaddleNormalRange() {
+        let state = GameState()
+        state.setPlayerPaddle(normalizedCrown: 0.5)
+        XCTAssertEqual(state.playerPaddleX, 0.5, accuracy: 0.0001)
+    }
 }
