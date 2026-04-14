@@ -1,0 +1,22 @@
+# Xcode
+build/
+DerivedData/
+
+# Xcode user-specific state
+xcuserdata/
+*.xcuserstate
+*.xcscheme
+
+# Xcode workspace shared settings
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
