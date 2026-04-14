@@ -1,6 +1,11 @@
 import XCTest
 @testable import PongWatch_Watch_App
 
+final class FakeHapticPlayer: HapticPlayer {
+    var playedCount = 0
+    func playClick() { playedCount += 1 }
+}
+
 final class GameStateTests: XCTestCase {
     func test_resetPutsGameInStartPhaseAndCenteredBall() {
         let state = GameState()
@@ -288,5 +293,21 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertEqual(state.phase, .gameOver)
         XCTAssertEqual(store.current, 15)
+    }
+
+    func test_playerPaddleHitPlaysHaptic() {
+        let haptic = FakeHapticPlayer()
+        let state = GameState(hapticPlayer: haptic)
+        state.phase = .playing
+        state.playerPaddleX = 0.5
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.05)
+
+        XCTAssertEqual(haptic.playedCount, 1)
     }
 }
