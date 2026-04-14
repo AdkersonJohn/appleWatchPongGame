@@ -60,6 +60,16 @@ final class GameState: ObservableObject {
             bouncePaddleHit(paddleX: playerPaddleX)
             score += 1
         }
+
+        // AI paddle (top)
+        let aiPaddleY = GameConstants.paddleMarginY
+        let aiPaddleBottom = aiPaddleY + GameConstants.paddleHeight / 2
+        if ball.velocity.dy < 0,
+           ball.position.y - GameConstants.ballRadius <= aiPaddleBottom,
+           ball.position.y - GameConstants.ballRadius >= aiPaddleY - GameConstants.paddleHeight / 2,
+           abs(ball.position.x - aiPaddleX) <= GameConstants.paddleWidth / 2 {
+            bouncePaddleHit(paddleX: aiPaddleX)
+        }
     }
 
     private func bouncePaddleHit(paddleX: CGFloat) {
