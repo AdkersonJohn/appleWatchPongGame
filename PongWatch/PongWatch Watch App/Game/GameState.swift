@@ -49,6 +49,33 @@ final class GameState: ObservableObject {
             ball.position.x = 1.0 - GameConstants.ballRadius
             ball.velocity.dx = -ball.velocity.dx
         }
+
+        // Player paddle (bottom)
+        let playerPaddleY = 1.0 - GameConstants.paddleMarginY
+        let playerPaddleTop = playerPaddleY - GameConstants.paddleHeight / 2
+        if ball.velocity.dy > 0,
+           ball.position.y + GameConstants.ballRadius >= playerPaddleTop,
+           ball.position.y + GameConstants.ballRadius <= playerPaddleY + GameConstants.paddleHeight / 2,
+           abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
+            bouncePaddleHit(paddleX: playerPaddleX)
+            score += 1
+        }
+    }
+
+    private func bouncePaddleHit(paddleX: CGFloat) {
+        ball.velocity.dy = -ball.velocity.dy
+        // Impact offset: -1 (left edge) to +1 (right edge)
+        let offset = (ball.position.x - paddleX) / (GameConstants.paddleWidth / 2)
+        let clamped = max(-1, min(1, offset))
+        let speed = hypot(ball.velocity.dx, ball.velocity.dy)
+        // Steer dx toward offset while preserving overall speed
+        let steerAmount: CGFloat = 0.7
+        let newDx = clamped * speed * steerAmount
+        // Recompute dy to preserve speed magnitude
+        let newDySquared = max(0, speed * speed - newDx * newDx)
+        let newDy = (ball.velocity.dy < 0 ? -1 : 1) * sqrt(newDySquared)
+        ball.velocity.dx = newDx
+        ball.velocity.dy = newDy
     }
 
     private func randomInitialVelocity(speed: CGFloat) -> CGVector {
