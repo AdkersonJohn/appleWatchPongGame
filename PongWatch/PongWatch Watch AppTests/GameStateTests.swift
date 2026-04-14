@@ -214,4 +214,41 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(state.aiPaddleX, GameConstants.paddleWidth / 2)
     }
+
+    func test_ballSpeedIncreasesAfterFifthHit() {
+        let state = GameState()
+        state.phase = .playing
+        state.score = 4  // next hit makes it 5
+        state.playerPaddleX = 0.5
+        let startSpeed = GameConstants.initialBallSpeed
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: startSpeed)
+        )
+
+        state.update(dt: 0.01)
+
+        let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+        let expected = startSpeed * (1 + GameConstants.speedIncreasePerTier)
+        XCTAssertEqual(newSpeed, expected, accuracy: 0.0001)
+    }
+
+    func test_ballSpeedDoesNotExceedMax() {
+        let state = GameState()
+        state.phase = .playing
+        state.score = 4
+        state.playerPaddleX = 0.5
+        // Ball already at max speed, moving into paddle
+        let paddleY = 1.0 - GameConstants.paddleMarginY
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+            velocity: CGVector(dx: 0, dy: GameConstants.maxBallSpeed)
+        )
+
+        state.update(dt: 0.01)
+
+        let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+        XCTAssertLessThanOrEqual(newSpeed, GameConstants.maxBallSpeed + 0.0001)
+    }
 }

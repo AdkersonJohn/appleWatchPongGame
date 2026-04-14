@@ -59,6 +59,13 @@ final class GameState: ObservableObject {
            abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
             bouncePaddleHit(paddleX: playerPaddleX)
             score += 1
+
+            if score % GameConstants.hitsPerSpeedTier == 0,
+               currentBallSpeed < GameConstants.maxBallSpeed {
+                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
+                rescaleBallSpeed(to: currentBallSpeed)
+            }
         }
 
         // AI paddle (top)
@@ -109,6 +116,14 @@ final class GameState: ObservableObject {
         let newDy = (ball.velocity.dy < 0 ? -1 : 1) * sqrt(newDySquared)
         ball.velocity.dx = newDx
         ball.velocity.dy = newDy
+    }
+
+    private func rescaleBallSpeed(to targetSpeed: CGFloat) {
+        let currentMag = hypot(ball.velocity.dx, ball.velocity.dy)
+        guard currentMag > 0 else { return }
+        let scale = targetSpeed / currentMag
+        ball.velocity.dx *= scale
+        ball.velocity.dy *= scale
     }
 
     private func randomInitialVelocity(speed: CGFloat) -> CGVector {
