@@ -33,6 +33,11 @@ final class GameState: ObservableObject {
         ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
     }
 
+    func setPlayerPaddle(normalizedCrown value: CGFloat) {
+        let half = GameConstants.paddleWidth / 2
+        playerPaddleX = max(half, min(1 - half, value))
+    }
+
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
 
