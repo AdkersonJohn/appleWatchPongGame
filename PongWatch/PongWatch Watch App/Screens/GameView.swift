@@ -2,13 +2,29 @@ import SwiftUI
 
 struct GameView: View {
     @ObservedObject var state: GameState
+    @State private var lastFrameTime: Date?
 
     var body: some View {
         GeometryReader { geo in
-            Canvas { context, size in
-                drawPlayfield(context: context, size: size)
+            TimelineView(.animation) { timeline in
+                Canvas { context, size in
+                    let now = timeline.date
+                    let dt: CGFloat
+                    if let last = lastFrameTime {
+                        dt = CGFloat(now.timeIntervalSince(last))
+                    } else {
+                        dt = 0
+                    }
+                    // Cap dt so big pauses don't teleport the ball
+                    let cappedDt = min(dt, 0.05)
+                    state.update(dt: cappedDt)
+                    DispatchQueue.main.async {
+                        lastFrameTime = now
+                    }
+                    drawPlayfield(context: context, size: size)
+                }
+                .background(Color.black)
             }
-            .background(Color.black)
         }
         .ignoresSafeArea()
     }
