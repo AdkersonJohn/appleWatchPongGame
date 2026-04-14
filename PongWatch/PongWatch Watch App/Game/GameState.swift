@@ -11,9 +11,12 @@ final class GameState: ObservableObject {
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private let highScoreStore: HighScoreStore
+    private let hapticPlayer: HapticPlayer
 
-    init(highScoreStore: HighScoreStore = HighScoreStore()) {
+    init(highScoreStore: HighScoreStore = HighScoreStore(),
+         hapticPlayer: HapticPlayer = WatchHapticPlayer()) {
         self.highScoreStore = highScoreStore
+        self.hapticPlayer = hapticPlayer
         self.ball = Ball(position: CGPoint(x: 0.5, y: 0.5),
                          velocity: .zero)
         self.playerPaddleX = 0.5
@@ -66,6 +69,7 @@ final class GameState: ObservableObject {
            abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
             bouncePaddleHit(paddleX: playerPaddleX)
             score += 1
+            hapticPlayer.playClick()
 
             if score % GameConstants.hitsPerSpeedTier == 0,
                currentBallSpeed < GameConstants.maxBallSpeed {
