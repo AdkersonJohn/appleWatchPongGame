@@ -52,4 +52,29 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertEqual(state.ball.position.x, 0.5, accuracy: 0.0001)
     }
+
+    func test_ballBouncesOffLeftWall() {
+        let state = GameState()
+        state.phase = .playing
+        // Ball near left wall moving further left
+        state.ball = Ball(position: CGPoint(x: GameConstants.ballRadius * 0.5, y: 0.5),
+                          velocity: CGVector(dx: -0.5, dy: 0))
+
+        state.update(dt: 0.01)
+
+        XCTAssertGreaterThan(state.ball.velocity.dx, 0, "Velocity.dx should flip to positive")
+        XCTAssertGreaterThanOrEqual(state.ball.position.x, GameConstants.ballRadius)
+    }
+
+    func test_ballBouncesOffRightWall() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 1.0 - GameConstants.ballRadius * 0.5, y: 0.5),
+                          velocity: CGVector(dx: 0.5, dy: 0))
+
+        state.update(dt: 0.01)
+
+        XCTAssertLessThan(state.ball.velocity.dx, 0, "Velocity.dx should flip to negative")
+        XCTAssertLessThanOrEqual(state.ball.position.x, 1.0 - GameConstants.ballRadius)
+    }
 }
