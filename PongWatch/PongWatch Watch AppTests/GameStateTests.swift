@@ -179,4 +179,39 @@ final class GameStateTests: XCTestCase {
         XCTAssertEqual(state.phase, .gameOver)
         XCTAssertEqual(state.score, 7, "Final score preserved for display")
     }
+
+    func test_aiPaddleMovesTowardBall() {
+        let state = GameState()
+        state.phase = .playing
+        state.aiPaddleX = 0.3
+        // Ball in upper half, to the right
+        state.ball = Ball(
+            position: CGPoint(x: 0.8, y: 0.3),
+            velocity: CGVector(dx: 0, dy: 0)
+        )
+
+        state.update(dt: 0.1)
+
+        XCTAssertGreaterThan(state.aiPaddleX, 0.3, "AI paddle should move right toward ball")
+        // And it shouldn't teleport — capped by aiMaxSpeed * dt
+        let maxMove = GameConstants.aiMaxSpeed * 0.1
+        XCTAssertLessThanOrEqual(state.aiPaddleX - 0.3, maxMove + 0.0001)
+    }
+
+    func test_aiPaddleStaysInBounds() {
+        let state = GameState()
+        state.phase = .playing
+        state.aiPaddleX = GameConstants.paddleWidth / 2 + 0.001
+        state.ball = Ball(
+            position: CGPoint(x: 0.0, y: 0.3),
+            velocity: .zero
+        )
+
+        // Simulate many frames
+        for _ in 0..<100 {
+            state.update(dt: 0.1)
+        }
+
+        XCTAssertGreaterThanOrEqual(state.aiPaddleX, GameConstants.paddleWidth / 2)
+    }
 }

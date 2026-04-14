@@ -71,6 +71,18 @@ final class GameState: ObservableObject {
             bouncePaddleHit(paddleX: aiPaddleX)
         }
 
+        // AI paddle tracks the ball
+        let aiDelta = ball.position.x - aiPaddleX
+        let maxStep = GameConstants.aiMaxSpeed * dt
+        let step: CGFloat
+        if abs(aiDelta) < maxStep {
+            step = aiDelta
+        } else {
+            step = aiDelta > 0 ? maxStep : -maxStep
+        }
+        let half = GameConstants.paddleWidth / 2
+        aiPaddleX = max(half, min(1 - half, aiPaddleX + step))
+
         // Ball exits top (AI missed) — reset ball, keep playing
         if ball.position.y < 0 {
             ball.position = CGPoint(x: 0.5, y: 0.5)
