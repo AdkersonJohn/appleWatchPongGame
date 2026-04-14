@@ -164,4 +164,19 @@ final class GameStateTests: XCTestCase {
         let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
         XCTAssertGreaterThan(mag, 0, "Ball should have a new velocity")
     }
+
+    func test_ballExitBottomTransitionsToGameOver() {
+        let state = GameState()
+        state.phase = .playing
+        state.score = 7
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: 1.01),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.01)
+
+        XCTAssertEqual(state.phase, .gameOver)
+        XCTAssertEqual(state.score, 7, "Final score preserved for display")
+    }
 }

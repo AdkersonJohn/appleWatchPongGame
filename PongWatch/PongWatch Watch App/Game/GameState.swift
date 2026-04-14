@@ -76,6 +76,11 @@ final class GameState: ObservableObject {
             ball.position = CGPoint(x: 0.5, y: 0.5)
             ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
         }
+
+        // Ball exits bottom — game over
+        if ball.position.y > 1.0 {
+            phase = .gameOver
+        }
     }
 
     private func bouncePaddleHit(paddleX: CGFloat) {
