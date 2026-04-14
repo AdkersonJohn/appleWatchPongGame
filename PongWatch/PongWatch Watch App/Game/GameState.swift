@@ -38,6 +38,17 @@ final class GameState: ObservableObject {
 
         ball.position.x += ball.velocity.dx * dt
         ball.position.y += ball.velocity.dy * dt
+
+        // Left wall
+        if ball.position.x < GameConstants.ballRadius {
+            ball.position.x = GameConstants.ballRadius
+            ball.velocity.dx = -ball.velocity.dx
+        }
+        // Right wall
+        if ball.position.x > 1.0 - GameConstants.ballRadius {
+            ball.position.x = 1.0 - GameConstants.ballRadius
+            ball.velocity.dx = -ball.velocity.dx
+        }
     }
 
     private func randomInitialVelocity(speed: CGFloat) -> CGVector {
