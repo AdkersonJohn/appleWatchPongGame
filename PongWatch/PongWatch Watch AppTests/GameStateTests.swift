@@ -145,4 +145,23 @@ final class GameStateTests: XCTestCase {
         XCTAssertGreaterThan(state.ball.velocity.dy, 0, "Should bounce down")
         XCTAssertEqual(state.score, 0, "AI hit does not change score")
     }
+
+    func test_ballExitTopResetsBallAndKeepsPlaying() {
+        let state = GameState()
+        state.phase = .playing
+        state.score = 3
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: -0.01),
+            velocity: CGVector(dx: 0, dy: -0.5)
+        )
+
+        state.update(dt: 0.01)
+
+        XCTAssertEqual(state.phase, .playing)
+        XCTAssertEqual(state.score, 3)
+        XCTAssertEqual(state.ball.position.x, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.position.y, 0.5, accuracy: 0.0001)
+        let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+        XCTAssertGreaterThan(mag, 0, "Ball should have a new velocity")
+    }
 }

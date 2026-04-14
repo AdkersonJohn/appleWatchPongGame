@@ -70,6 +70,12 @@ final class GameState: ObservableObject {
            abs(ball.position.x - aiPaddleX) <= GameConstants.paddleWidth / 2 {
             bouncePaddleHit(paddleX: aiPaddleX)
         }
+
+        // Ball exits top (AI missed) — reset ball, keep playing
+        if ball.position.y < 0 {
+            ball.position = CGPoint(x: 0.5, y: 0.5)
+            ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
+        }
     }
 
     private func bouncePaddleHit(paddleX: CGFloat) {
