@@ -3,6 +3,7 @@ import SwiftUI
 struct GameView: View {
     @ObservedObject var state: GameState
     @State private var lastFrameTime: Date?
+    @State private var crownValue: Double = 0.5
 
     var body: some View {
         GeometryReader { geo in
@@ -15,7 +16,6 @@ struct GameView: View {
                     } else {
                         dt = 0
                     }
-                    // Cap dt so big pauses don't teleport the ball
                     let cappedDt = min(dt, 0.05)
                     state.update(dt: cappedDt)
                     DispatchQueue.main.async {
@@ -27,6 +27,19 @@ struct GameView: View {
             }
         }
         .ignoresSafeArea()
+        .focusable()
+        .digitalCrownRotation(
+            $crownValue,
+            from: 0.0,
+            through: 1.0,
+            by: 0.005,
+            sensitivity: .medium,
+            isContinuous: false,
+            isHapticFeedbackEnabled: true
+        )
+        .onChange(of: crownValue) { _, newValue in
+            state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
+        }
     }
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
