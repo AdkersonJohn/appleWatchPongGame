@@ -29,4 +29,27 @@ final class GameStateTests: XCTestCase {
         let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
         XCTAssertEqual(mag, GameConstants.initialBallSpeed, accuracy: 0.0001)
     }
+
+    func test_updateMovesBallByVelocityTimesDt() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5),
+                          velocity: CGVector(dx: 0.2, dy: -0.1))
+
+        state.update(dt: 0.5)
+
+        XCTAssertEqual(state.ball.position.x, 0.6, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.position.y, 0.45, accuracy: 0.0001)
+    }
+
+    func test_updateDoesNothingWhenNotPlaying() {
+        let state = GameState()
+        state.phase = .start
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5),
+                          velocity: CGVector(dx: 0.2, dy: 0.0))
+
+        state.update(dt: 0.5)
+
+        XCTAssertEqual(state.ball.position.x, 0.5, accuracy: 0.0001)
+    }
 }
