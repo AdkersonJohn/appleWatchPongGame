@@ -293,6 +293,37 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertEqual(state.phase, .gameOver)
         XCTAssertEqual(store.current, 15)
+        XCTAssertTrue(state.lastRunWasRecord, "Beating previous high score should flag as record")
+    }
+
+    func test_gameOverTiedScoreDoesNotFlagAsRecord() {
+        let suiteName = "GameStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = HighScoreStore(defaults: defaults)
+        _ = store.updateIfHigher(newScore: 10)  // existing high score
+
+        let state = GameState(highScoreStore: store)
+        state.phase = .playing
+        state.score = 10  // tied, not beaten
+        state.ball = Ball(
+            position: CGPoint(x: 0.5, y: 1.01),
+            velocity: CGVector(dx: 0, dy: 0.5)
+        )
+
+        state.update(dt: 0.01)
+
+        XCTAssertEqual(state.phase, .gameOver)
+        XCTAssertEqual(store.current, 10)
+        XCTAssertFalse(state.lastRunWasRecord, "Tying previous high score must not flag as record")
+    }
+
+    func test_startGameClearsLastRunWasRecordFlag() {
+        let state = GameState()
+        state.lastRunWasRecord = true  // simulate prior game-over state
+        state.startGame()
+        XCTAssertFalse(state.lastRunWasRecord)
     }
 
     func test_playerPaddleHitPlaysHaptic() {

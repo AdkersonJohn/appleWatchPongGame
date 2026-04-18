@@ -12,13 +12,9 @@ struct ContentView: View {
         case .playing:
             GameView(state: state)
         case .gameOver:
-            // By the time this arm renders, GameState.update(dt:) has already
-            // called HighScoreStore.updateIfHigher, so a record run means
-            // state.score == HighScoreStore().current.
-            let isNewHigh = state.score > 0 && state.score == HighScoreStore().current
             GameOverView(
                 finalScore: state.score,
-                isNewHighScore: isNewHigh,
+                isNewHighScore: state.lastRunWasRecord,
                 onRestart: {
                     state.startGame()
                 }
