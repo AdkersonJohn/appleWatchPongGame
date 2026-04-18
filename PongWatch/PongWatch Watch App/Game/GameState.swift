@@ -8,6 +8,7 @@ final class GameState: ObservableObject {
     @Published var playerPaddleX: CGFloat
     @Published var aiPaddleX: CGFloat
     @Published var score: Int = 0
+    @Published var lastRunWasRecord: Bool = false
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private let highScoreStore: HighScoreStore
@@ -26,6 +27,7 @@ final class GameState: ObservableObject {
     func reset() {
         phase = .start
         score = 0
+        lastRunWasRecord = false
         currentBallSpeed = GameConstants.initialBallSpeed
         ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
         playerPaddleX = 0.5
@@ -127,8 +129,8 @@ final class GameState: ObservableObject {
 
         // Ball exits bottom — game over
         if ball.position.y > 1.0 {
+            lastRunWasRecord = highScoreStore.updateIfHigher(newScore: score)
             phase = .gameOver
-            highScoreStore.updateIfHigher(newScore: score)
         }
     }
 
