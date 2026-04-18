@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GameView: View {
     @ObservedObject var state: GameState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var crownValue: Double = 0.5
 
     var body: some View {
@@ -25,15 +26,23 @@ struct GameView: View {
         .onChange(of: crownValue) { _, newValue in
             state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
         }
-        .task {
-            // Game tick runs outside SwiftUI's body evaluation. Mutations to
-            // @Published state here are safe and trigger Canvas redraws.
+        .task(id: scenePhase) {
+            // Restarts on scenePhase change. When the user drops their wrist
+            // (scenePhase → .inactive/.background) the loop bails so physics
+            // don't advance while the app is dimmed or suspended. On return to
+            // .active, a fresh task starts with fresh timing.
+            guard scenePhase == .active else { return }
+
             var last = Date()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 16_666_666) // ~60fps
                 let now = Date()
                 let dt = CGFloat(now.timeIntervalSince(last))
                 last = now
+                // A large gap means the task was throttled by the OS
+                // (wrist-down, Always-On). Treat this tick as a resume and
+                // skip it so the ball doesn't teleport.
+                if dt > 0.1 { continue }
                 state.update(dt: min(dt, 0.05))
             }
         }
