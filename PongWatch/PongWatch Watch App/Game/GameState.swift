@@ -46,6 +46,24 @@ final class GameState: ObservableObject {
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
 
+        // Sub-step physics so a single fast-ball frame can't skip past a paddle.
+        // Cap each sub-step's travel to half a paddle's thickness, which
+        // guarantees the collision window is sampled at least once per pass.
+        let speed = hypot(ball.velocity.dx, ball.velocity.dy)
+        let maxStepDistance = GameConstants.paddleHeight / 2
+        let substeps: Int = {
+            guard speed > 0 else { return 1 }
+            return max(1, Int(ceil(speed * dt / maxStepDistance)))
+        }()
+        let subDt = dt / CGFloat(substeps)
+
+        for _ in 0..<substeps {
+            guard phase == .playing else { return }
+            stepPhysics(dt: subDt)
+        }
+    }
+
+    private func stepPhysics(dt: CGFloat) {
         ball.position.x += ball.velocity.dx * dt
         ball.position.y += ball.velocity.dy * dt
 
