@@ -18,5 +18,5 @@ enum GameConstants {
     static let hitsPerSpeedTier: Int = 5
 
     // AI paddle max horizontal speed (normalized units per second)
-    static let aiMaxSpeed: CGFloat = 0.35
+    static let aiMaxSpeed: CGFloat = 0.31
 }
