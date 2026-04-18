@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "icon-composer": {
+      "command": "node",
+      "args": ["/Volumes/bingobango/code/iconComposerMCP/dist/index.js"],
+      "env": {
+        "ICON_COMPOSER_PATH": "/Volumes/bingobango/Icon Composer.app"
+      }
+    }
+  }
+}
