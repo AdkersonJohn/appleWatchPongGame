@@ -2,29 +2,14 @@ import SwiftUI
 
 struct GameView: View {
     @ObservedObject var state: GameState
-    @State private var lastFrameTime: Date?
     @State private var crownValue: Double = 0.5
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation) { timeline in
-                Canvas { context, size in
-                    let now = timeline.date
-                    let dt: CGFloat
-                    if let last = lastFrameTime {
-                        dt = CGFloat(now.timeIntervalSince(last))
-                    } else {
-                        dt = 0
-                    }
-                    let cappedDt = min(dt, 0.05)
-                    state.update(dt: cappedDt)
-                    DispatchQueue.main.async {
-                        lastFrameTime = now
-                    }
-                    drawPlayfield(context: context, size: size)
-                }
-                .background(Color.black)
+            Canvas { context, size in
+                drawPlayfield(context: context, size: size)
             }
+            .background(Color.black)
         }
         .ignoresSafeArea()
         .focusable()
@@ -39,6 +24,18 @@ struct GameView: View {
         )
         .onChange(of: crownValue) { _, newValue in
             state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
+        }
+        .task {
+            // Game tick runs outside SwiftUI's body evaluation. Mutations to
+            // @Published state here are safe and trigger Canvas redraws.
+            var last = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 16_666_666) // ~60fps
+                let now = Date()
+                let dt = CGFloat(now.timeIntervalSince(last))
+                last = now
+                state.update(dt: min(dt, 0.05))
+            }
         }
     }
 
