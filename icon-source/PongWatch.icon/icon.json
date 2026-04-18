@@ -1,0 +1,25 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "paddles_and_ball.png",
+          "name": "Paddles and Ball",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  },
+  "fill": {
+    "automatic-gradient": "extended-srgb:0.05,0.05,0.05,1.0"
+  }
+}
