@@ -360,4 +360,29 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertEqual(haptic.playedCount, 1)
     }
+
+    func test_spawnScoreBurstCreatesExpectedCountAtGivenX() {
+        let state = GameState()
+        state.spawnScoreBurst(atX: 0.3)
+
+        XCTAssertEqual(state.particles.count, GameConstants.particlesPerBurst)
+        for p in state.particles {
+            XCTAssertEqual(p.position.x, 0.3, accuracy: 0.0001)
+            XCTAssertEqual(p.position.y, 0.0, accuracy: 0.0001)
+        }
+    }
+
+    func test_spawnScoreBurstVelocitiesHaveDownwardBiasAndVariedSpeeds() {
+        let state = GameState()
+        state.spawnScoreBurst(atX: 0.5)
+
+        for p in state.particles {
+            // Every particle moves into the playfield (dy > 0)
+            XCTAssertGreaterThan(p.velocity.dy, 0, "Particle dy should be positive (moving down)")
+            // Speed magnitude within configured range
+            let speed = hypot(p.velocity.dx, p.velocity.dy)
+            XCTAssertGreaterThanOrEqual(speed, GameConstants.particleMinSpeed - 0.0001)
+            XCTAssertLessThanOrEqual(speed, GameConstants.particleMaxSpeed + 0.0001)
+        }
+    }
 }

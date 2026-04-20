@@ -11,6 +11,7 @@ final class GameState: ObservableObject {
     @Published var lastRunWasRecord: Bool = false
     // nil = no countdown, ball is in play. Otherwise the number (3, 2, 1) to show.
     @Published var countdownRemaining: Int?
+    @Published var particles: [Particle] = []
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private var countdownElapsed: CGFloat = 0
@@ -157,6 +158,37 @@ final class GameState: ObservableObject {
         let newDy = (ball.velocity.dy < 0 ? -1 : 1) * sqrt(newDySquared)
         ball.velocity.dx = newDx
         ball.velocity.dy = newDy
+    }
+
+    func spawnScoreBurst(atX x: CGFloat) {
+        let origin = CGPoint(x: x, y: 0.0)
+        var newParticles: [Particle] = []
+        newParticles.reserveCapacity(GameConstants.particlesPerBurst)
+
+        for _ in 0..<GameConstants.particlesPerBurst {
+            // Direction: dx in [-1, 1], dy in [0.1, 1] — biases burst into the playfield.
+            let rawDx = CGFloat.random(in: -1...1)
+            let rawDy = CGFloat.random(in: 0.1...1.0)
+            let mag = hypot(rawDx, rawDy)
+            let ux = rawDx / mag
+            let uy = rawDy / mag
+
+            let speed = CGFloat.random(in: GameConstants.particleMinSpeed...GameConstants.particleMaxSpeed)
+            let lifespan = CGFloat.random(in: GameConstants.particleMinLifespan...GameConstants.particleMaxLifespan)
+            let color = GameConstants.particlePalette.randomElement()!
+
+            newParticles.append(Particle(
+                position: origin,
+                velocity: CGVector(dx: ux * speed, dy: uy * speed),
+                ageRemaining: lifespan,
+                totalAge: lifespan,
+                radius: GameConstants.ballRadius * GameConstants.particleRadiusFactor,
+                red: color.0,
+                green: color.1,
+                blue: color.2
+            ))
+        }
+        particles = newParticles
     }
 
     private func startCountdown() {
