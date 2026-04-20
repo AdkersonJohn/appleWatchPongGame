@@ -63,19 +63,30 @@ struct GameView: View {
             centerX: state.aiPaddleX,
             centerY: GameConstants.paddleMarginY
         )
-        // Ball
-        let ballPx = CGPoint(
-            x: state.ball.position.x * size.width,
-            y: state.ball.position.y * size.height
-        )
-        let ballRadiusPx = GameConstants.ballRadius * size.width
-        let ballRect = CGRect(
-            x: ballPx.x - ballRadiusPx,
-            y: ballPx.y - ballRadiusPx,
-            width: ballRadiusPx * 2,
-            height: ballRadiusPx * 2
-        )
-        context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+
+        if let count = state.countdownRemaining {
+            // Countdown: hide ball, show big number in center.
+            let countText = Text("\(count)")
+                .font(.system(size: 72, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+            context.draw(countText,
+                         at: CGPoint(x: size.width / 2, y: size.height / 2),
+                         anchor: .center)
+        } else {
+            // Ball
+            let ballPx = CGPoint(
+                x: state.ball.position.x * size.width,
+                y: state.ball.position.y * size.height
+            )
+            let ballRadiusPx = GameConstants.ballRadius * size.width
+            let ballRect = CGRect(
+                x: ballPx.x - ballRadiusPx,
+                y: ballPx.y - ballRadiusPx,
+                width: ballRadiusPx * 2,
+                height: ballRadiusPx * 2
+            )
+            context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+        }
 
         // Score
         let scoreText = Text("\(state.score)").font(.caption2).foregroundColor(.white)

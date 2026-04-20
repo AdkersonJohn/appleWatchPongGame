@@ -15,8 +15,11 @@ enum GameConstants {
     static let initialBallSpeed: CGFloat = 0.6
     static let maxBallSpeed: CGFloat = 1.8
     static let speedIncreasePerTier: CGFloat = 0.10  // 10% per tier
-    static let hitsPerSpeedTier: Int = 5
+    static let pointsPerSpeedTier: Int = 5
 
     // AI paddle max horizontal speed (normalized units per second)
     static let aiMaxSpeed: CGFloat = 0.31
+
+    // Countdown shown before each new ball launch (3…2…1 then go)
+    static let countdownStart: Int = 3
 }

@@ -28,9 +28,22 @@ final class GameStateTests: XCTestCase {
         XCTAssertEqual(state.phase, .playing)
     }
 
-    func test_startGameSetsBallVelocityWithExpectedMagnitude() {
+    func test_startGameStartsCountdownWithBallStationary() {
         let state = GameState()
         state.startGame()
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
+        XCTAssertEqual(state.ball.velocity.dx, 0, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.velocity.dy, 0, accuracy: 0.0001)
+    }
+
+    func test_countdownLaunchesBallAfterElapsedTime() {
+        let state = GameState()
+        state.startGame()
+
+        // Tick through the full countdown
+        state.update(dt: CGFloat(GameConstants.countdownStart))
+
+        XCTAssertNil(state.countdownRemaining)
         let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
         XCTAssertEqual(mag, GameConstants.initialBallSpeed, accuracy: 0.0001)
     }
@@ -97,7 +110,7 @@ final class GameStateTests: XCTestCase {
         state.update(dt: 0.05)
 
         XCTAssertLessThan(state.ball.velocity.dy, 0, "Should bounce upward")
-        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.score, 0, "Paddle hit does not change score")
     }
 
     func test_ballMissesPlayerPaddleWhenOffsetHorizontally() {
@@ -151,7 +164,7 @@ final class GameStateTests: XCTestCase {
         XCTAssertEqual(state.score, 0, "AI hit does not change score")
     }
 
-    func test_ballExitTopResetsBallAndKeepsPlaying() {
+    func test_ballExitTopScoresPointAndStartsCountdown() {
         let state = GameState()
         state.phase = .playing
         state.score = 3
@@ -163,11 +176,12 @@ final class GameStateTests: XCTestCase {
         state.update(dt: 0.01)
 
         XCTAssertEqual(state.phase, .playing)
-        XCTAssertEqual(state.score, 3)
+        XCTAssertEqual(state.score, 4, "Ball past AI paddle = player scores a point")
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
         XCTAssertEqual(state.ball.position.x, 0.5, accuracy: 0.0001)
         XCTAssertEqual(state.ball.position.y, 0.5, accuracy: 0.0001)
-        let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
-        XCTAssertGreaterThan(mag, 0, "Ball should have a new velocity")
+        XCTAssertEqual(state.ball.velocity.dx, 0, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.velocity.dy, 0, accuracy: 0.0001)
     }
 
     func test_ballExitBottomTransitionsToGameOver() {
@@ -220,41 +234,46 @@ final class GameStateTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(state.aiPaddleX, GameConstants.paddleWidth / 2)
     }
 
-    func test_ballSpeedIncreasesAfterFifthHit() {
+    func test_ballSpeedIncreasesAfterFifthPoint() {
         let state = GameState()
         state.phase = .playing
-        state.score = 4  // next hit makes it 5
-        state.playerPaddleX = 0.5
-        let startSpeed = GameConstants.initialBallSpeed
-        let paddleY = 1.0 - GameConstants.paddleMarginY
+        state.score = 4  // next point makes it 5
         state.ball = Ball(
-            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
-            velocity: CGVector(dx: 0, dy: startSpeed)
+            position: CGPoint(x: 0.5, y: -0.01),  // ball past top
+            velocity: CGVector(dx: 0, dy: -0.5)
         )
 
-        state.update(dt: 0.01)
+        state.update(dt: 0.01)  // score 5, start countdown; speed bumped internally
+        XCTAssertEqual(state.score, 5)
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
 
+        // Tick through the countdown to launch the ball with the bumped speed.
+        state.update(dt: CGFloat(GameConstants.countdownStart))
+
+        XCTAssertNil(state.countdownRemaining)
         let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
-        let expected = startSpeed * (1 + GameConstants.speedIncreasePerTier)
+        let expected = GameConstants.initialBallSpeed * (1 + GameConstants.speedIncreasePerTier)
         XCTAssertEqual(newSpeed, expected, accuracy: 0.0001)
     }
 
     func test_ballSpeedDoesNotExceedMax() {
         let state = GameState()
         state.phase = .playing
-        state.score = 4
-        state.playerPaddleX = 0.5
-        // Ball already at max speed, moving into paddle
-        let paddleY = 1.0 - GameConstants.paddleMarginY
-        state.ball = Ball(
-            position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
-            velocity: CGVector(dx: 0, dy: GameConstants.maxBallSpeed)
-        )
 
-        state.update(dt: 0.01)
+        // Simulate many scoring rounds by repeatedly forcing a ball-past-top event
+        // and ticking through the countdown. Speed bumps every 5 points; after
+        // enough points it should saturate at maxBallSpeed.
+        for _ in 0..<100 {
+            state.ball = Ball(
+                position: CGPoint(x: 0.5, y: -0.01),
+                velocity: CGVector(dx: 0, dy: -0.5)
+            )
+            state.update(dt: 0.01)  // triggers score, starts countdown
+            state.update(dt: CGFloat(GameConstants.countdownStart))  // finishes countdown, launches ball
+        }
 
-        let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
-        XCTAssertLessThanOrEqual(newSpeed, GameConstants.maxBallSpeed + 0.0001)
+        let finalSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+        XCTAssertLessThanOrEqual(finalSpeed, GameConstants.maxBallSpeed + 0.0001)
     }
 
     func test_setPlayerPaddleClampsToLeft() {
