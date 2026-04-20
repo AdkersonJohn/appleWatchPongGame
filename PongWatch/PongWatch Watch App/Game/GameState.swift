@@ -55,6 +55,8 @@ final class GameState: ObservableObject {
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
 
+        updateParticles(dt: dt)
+
         // While the 3-2-1 countdown is running, the ball sits at center with
         // zero velocity. Advance the countdown and skip physics this tick.
         if countdownRemaining != nil {
