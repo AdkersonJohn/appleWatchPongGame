@@ -91,6 +91,16 @@ struct GameView: View {
         // Score
         let scoreText = Text("\(state.score)").font(.caption2).foregroundColor(.white)
         context.draw(scoreText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
+
+        // Scoring burst particles
+        for p in state.particles {
+            let center = CGPoint(x: p.position.x * size.width, y: p.position.y * size.height)
+            let r = p.radius * size.width
+            let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+            let alpha = max(0, min(1, p.ageRemaining / p.totalAge))
+            let color = Color(red: p.red, green: p.green, blue: p.blue).opacity(alpha)
+            context.fill(Path(ellipseIn: rect), with: .color(color))
+        }
     }
 
     private func drawPaddle(context: GraphicsContext, size: CGSize, centerX: CGFloat, centerY: CGFloat) {
