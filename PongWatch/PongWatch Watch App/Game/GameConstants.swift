@@ -22,4 +22,20 @@ enum GameConstants {
 
     // Countdown shown before each new ball launch (3…2…1 then go)
     static let countdownStart: Int = 3
+
+    // Scoring burst
+    static let particlesPerBurst: Int = 20
+    static let particleMinSpeed: CGFloat = 0.4
+    static let particleMaxSpeed: CGFloat = 1.2
+    static let particleMinLifespan: CGFloat = 0.4
+    static let particleMaxLifespan: CGFloat = 0.8
+    static let particleRadiusFactor: CGFloat = 0.4   // fraction of ballRadius
+
+    // Warm palette: gold, orange, red-orange, yellow. Each entry is (r, g, b) in 0…1.
+    static let particlePalette: [(CGFloat, CGFloat, CGFloat)] = [
+        (1.00, 0.843, 0.000),   // gold     #FFD700
+        (1.00, 0.549, 0.000),   // orange   #FF8C00
+        (1.00, 0.271, 0.000),   // red-orange #FF4500
+        (1.00, 0.918, 0.000)    // yellow   #FFEA00
+    ]
 }
