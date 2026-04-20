@@ -9,8 +9,11 @@ final class GameState: ObservableObject {
     @Published var aiPaddleX: CGFloat
     @Published var score: Int = 0
     @Published var lastRunWasRecord: Bool = false
+    // nil = no countdown, ball is in play. Otherwise the number (3, 2, 1) to show.
+    @Published var countdownRemaining: Int?
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
+    private var countdownElapsed: CGFloat = 0
     private let highScoreStore: HighScoreStore
     private let hapticPlayer: HapticPlayer
 
@@ -32,12 +35,14 @@ final class GameState: ObservableObject {
         ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
         playerPaddleX = 0.5
         aiPaddleX = 0.5
+        countdownRemaining = nil
+        countdownElapsed = 0
     }
 
     func startGame() {
         reset()
         phase = .playing
-        ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
+        startCountdown()
     }
 
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
@@ -47,6 +52,13 @@ final class GameState: ObservableObject {
 
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
+
+        // While the 3-2-1 countdown is running, the ball sits at center with
+        // zero velocity. Advance the countdown and skip physics this tick.
+        if countdownRemaining != nil {
+            tickCountdown(dt: dt)
+            return
+        }
 
         // Sub-step physics so a single fast-ball frame can't skip past a paddle.
         // Cap each sub-step's travel to half a paddle's thickness, which
@@ -88,15 +100,7 @@ final class GameState: ObservableObject {
            ball.position.y + GameConstants.ballRadius <= playerPaddleY + GameConstants.paddleHeight / 2,
            abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
             bouncePaddleHit(paddleX: playerPaddleX)
-            score += 1
             hapticPlayer.playClick()
-
-            if score % GameConstants.hitsPerSpeedTier == 0,
-               currentBallSpeed < GameConstants.maxBallSpeed {
-                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
-                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
-                rescaleBallSpeed(to: currentBallSpeed)
-            }
         }
 
         // AI paddle (top)
@@ -121,10 +125,15 @@ final class GameState: ObservableObject {
         let half = GameConstants.paddleWidth / 2
         aiPaddleX = max(half, min(1 - half, aiPaddleX + step))
 
-        // Ball exits top (AI missed) — reset ball, keep playing
+        // Ball exits top (AI missed) — player scores a point, start countdown.
         if ball.position.y < 0 {
-            ball.position = CGPoint(x: 0.5, y: 0.5)
-            ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
+            score += 1
+            if score % GameConstants.pointsPerSpeedTier == 0,
+               currentBallSpeed < GameConstants.maxBallSpeed {
+                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
+            }
+            startCountdown()
         }
 
         // Ball exits bottom — game over
@@ -150,12 +159,26 @@ final class GameState: ObservableObject {
         ball.velocity.dy = newDy
     }
 
-    private func rescaleBallSpeed(to targetSpeed: CGFloat) {
-        let currentMag = hypot(ball.velocity.dx, ball.velocity.dy)
-        guard currentMag > 0 else { return }
-        let scale = targetSpeed / currentMag
-        ball.velocity.dx *= scale
-        ball.velocity.dy *= scale
+    private func startCountdown() {
+        ball.position = CGPoint(x: 0.5, y: 0.5)
+        ball.velocity = .zero
+        countdownRemaining = GameConstants.countdownStart
+        countdownElapsed = 0
+    }
+
+    private func tickCountdown(dt: CGFloat) {
+        guard var remaining = countdownRemaining else { return }
+        countdownElapsed += dt
+        while countdownElapsed >= 1.0 && remaining > 0 {
+            countdownElapsed -= 1.0
+            remaining -= 1
+        }
+        if remaining > 0 {
+            countdownRemaining = remaining
+        } else {
+            countdownRemaining = nil
+            ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
+        }
     }
 
     private func randomInitialVelocity(speed: CGFloat) -> CGVector {
