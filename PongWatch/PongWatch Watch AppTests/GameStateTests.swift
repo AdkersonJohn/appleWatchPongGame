@@ -433,4 +433,19 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertTrue(state.particles.isEmpty)
     }
+
+    func test_updateTicksParticlesDuringCountdown() {
+        let state = GameState()
+        state.startGame()  // enters .playing with active countdown
+        state.spawnScoreBurst(atX: 0.5)
+        let initialAge = state.particles.first?.ageRemaining ?? 0
+        XCTAssertGreaterThan(initialAge, 0)
+
+        state.update(dt: 0.1)  // still mid-countdown
+
+        XCTAssertNotNil(state.countdownRemaining, "Should still be counting down")
+        XCTAssertFalse(state.particles.isEmpty, "Particles should still be alive")
+        let newAge = state.particles.first!.ageRemaining
+        XCTAssertLessThan(newAge, initialAge, "Particle age should have decayed")
+    }
 }
