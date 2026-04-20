@@ -234,23 +234,23 @@ final class GameStateTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(state.aiPaddleX, GameConstants.paddleWidth / 2)
     }
 
-    func test_ballSpeedIncreasesAfterFifthPoint() {
+    func test_ballSpeedIncreasesAfterFifthHit() {
         let state = GameState()
         state.phase = .playing
-        state.score = 4  // next point makes it 5
-        state.ball = Ball(
-            position: CGPoint(x: 0.5, y: -0.01),  // ball past top
-            velocity: CGVector(dx: 0, dy: -0.5)
-        )
+        state.playerPaddleX = 0.5
+        let paddleY = 1.0 - GameConstants.paddleMarginY
 
-        state.update(dt: 0.01)  // score 5, start countdown; speed bumped internally
-        XCTAssertEqual(state.score, 5)
-        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
+        // Drive exactly 5 paddle hits. Between hits, reset the ball to just-above-paddle
+        // moving straight down at initial speed so each update triggers a fresh collision.
+        // The 5th hit should trigger a speed-tier bump and rescale the post-bounce velocity.
+        for _ in 0..<5 {
+            state.ball = Ball(
+                position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+                velocity: CGVector(dx: 0, dy: GameConstants.initialBallSpeed)
+            )
+            state.update(dt: 0.01)
+        }
 
-        // Tick through the countdown to launch the ball with the bumped speed.
-        state.update(dt: CGFloat(GameConstants.countdownStart))
-
-        XCTAssertNil(state.countdownRemaining)
         let newSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
         let expected = GameConstants.initialBallSpeed * (1 + GameConstants.speedIncreasePerTier)
         XCTAssertEqual(newSpeed, expected, accuracy: 0.0001)
@@ -259,17 +259,20 @@ final class GameStateTests: XCTestCase {
     func test_ballSpeedDoesNotExceedMax() {
         let state = GameState()
         state.phase = .playing
+        state.playerPaddleX = 0.5
+        let paddleY = 1.0 - GameConstants.paddleMarginY
 
-        // Simulate many scoring rounds by repeatedly forcing a ball-past-top event
-        // and ticking through the countdown. Speed bumps every 5 points; after
-        // enough points it should saturate at maxBallSpeed.
+        // Drive many paddle hits. Each iteration resets the ball to above-paddle
+        // moving downward at its CURRENT speed, preserving the running speed bumps.
+        // Speed bumps every 5 hits; after ~12 tiers it should saturate at maxBallSpeed.
         for _ in 0..<100 {
+            let currentSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+            let effectiveSpeed = max(currentSpeed, GameConstants.initialBallSpeed)
             state.ball = Ball(
-                position: CGPoint(x: 0.5, y: -0.01),
-                velocity: CGVector(dx: 0, dy: -0.5)
+                position: CGPoint(x: 0.5, y: paddleY - GameConstants.paddleHeight),
+                velocity: CGVector(dx: 0, dy: effectiveSpeed)
             )
-            state.update(dt: 0.01)  // triggers score, starts countdown
-            state.update(dt: CGFloat(GameConstants.countdownStart))  // finishes countdown, launches ball
+            state.update(dt: 0.01)
         }
 
         let finalSpeed = hypot(state.ball.velocity.dx, state.ball.velocity.dy)

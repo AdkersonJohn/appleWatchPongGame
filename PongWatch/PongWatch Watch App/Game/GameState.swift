@@ -15,6 +15,9 @@ final class GameState: ObservableObject {
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private var countdownElapsed: CGFloat = 0
+    // Internal rally counter — every hitsPerSpeedTier paddle hits, ball speed bumps.
+    // Not @Published; not exposed to the UI.
+    private var hitCount: Int = 0
     private let highScoreStore: HighScoreStore
     private let hapticPlayer: HapticPlayer
 
@@ -39,6 +42,7 @@ final class GameState: ObservableObject {
         countdownRemaining = nil
         countdownElapsed = 0
         particles = []
+        hitCount = 0
     }
 
     func startGame() {
@@ -105,6 +109,13 @@ final class GameState: ObservableObject {
            abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
             bouncePaddleHit(paddleX: playerPaddleX)
             hapticPlayer.playClick()
+            hitCount += 1
+            if hitCount % GameConstants.hitsPerSpeedTier == 0,
+               currentBallSpeed < GameConstants.maxBallSpeed {
+                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
+                rescaleBallSpeed(to: currentBallSpeed)
+            }
         }
 
         // AI paddle (top)
@@ -132,11 +143,6 @@ final class GameState: ObservableObject {
         // Ball exits top (AI missed) — player scores a point, start countdown.
         if ball.position.y < 0 {
             score += 1
-            if score % GameConstants.pointsPerSpeedTier == 0,
-               currentBallSpeed < GameConstants.maxBallSpeed {
-                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
-                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
-            }
             spawnScoreBurst(atX: ball.position.x)
             startCountdown()
         }
@@ -162,6 +168,14 @@ final class GameState: ObservableObject {
         let newDy = (ball.velocity.dy < 0 ? -1 : 1) * sqrt(newDySquared)
         ball.velocity.dx = newDx
         ball.velocity.dy = newDy
+    }
+
+    private func rescaleBallSpeed(to targetSpeed: CGFloat) {
+        let currentMag = hypot(ball.velocity.dx, ball.velocity.dy)
+        guard currentMag > 0 else { return }
+        let scale = targetSpeed / currentMag
+        ball.velocity.dx *= scale
+        ball.velocity.dy *= scale
     }
 
     func spawnScoreBurst(atX x: CGFloat) {
