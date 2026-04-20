@@ -137,6 +137,7 @@ final class GameState: ObservableObject {
                 let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
                 currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
             }
+            spawnScoreBurst(atX: ball.position.x)
             startCountdown()
         }
 

@@ -448,4 +448,27 @@ final class GameStateTests: XCTestCase {
         let newAge = state.particles.first!.ageRemaining
         XCTAssertLessThan(newAge, initialAge, "Particle age should have decayed")
     }
+
+    func test_scoringSpawnsBurstAtImpactX() {
+        let state = GameState()
+        state.phase = .playing
+        let impactX: CGFloat = 0.37
+        state.ball = Ball(
+            position: CGPoint(x: impactX, y: -0.01),
+            velocity: CGVector(dx: 0, dy: -0.5)
+        )
+
+        state.update(dt: 0.01)  // triggers scoring
+
+        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.particles.count, GameConstants.particlesPerBurst)
+        // Every particle starts at (impactX, 0) before first tick of motion.
+        // The same update(dt: 0.01) call also runs updateParticles once, so
+        // allow a 1-tick displacement tolerance.
+        let maxDisplacement = GameConstants.particleMaxSpeed * 0.01 + 0.0001
+        for p in state.particles {
+            XCTAssertEqual(p.position.x, impactX, accuracy: maxDisplacement)
+            XCTAssertLessThanOrEqual(p.position.y, maxDisplacement)
+        }
+    }
 }
