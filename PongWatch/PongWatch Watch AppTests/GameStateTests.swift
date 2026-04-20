@@ -385,4 +385,42 @@ final class GameStateTests: XCTestCase {
             XCTAssertLessThanOrEqual(speed, GameConstants.particleMaxSpeed + 0.0001)
         }
     }
+
+    func test_updateParticlesAdvancesPositionAndDecaysAge() {
+        let state = GameState()
+        let p = Particle(
+            position: CGPoint(x: 0.5, y: 0.0),
+            velocity: CGVector(dx: 0.2, dy: 0.5),
+            ageRemaining: 1.0,
+            totalAge: 1.0,
+            radius: 0.01,
+            red: 1, green: 1, blue: 1
+        )
+        state.particles = [p]
+
+        state.updateParticles(dt: 0.1)
+
+        XCTAssertEqual(state.particles.count, 1)
+        let updated = state.particles[0]
+        XCTAssertEqual(updated.position.x, 0.52, accuracy: 0.0001)
+        XCTAssertEqual(updated.position.y, 0.05, accuracy: 0.0001)
+        XCTAssertEqual(updated.ageRemaining, 0.9, accuracy: 0.0001)
+    }
+
+    func test_updateParticlesRemovesExpiredParticles() {
+        let state = GameState()
+        let p = Particle(
+            position: CGPoint(x: 0.5, y: 0.0),
+            velocity: CGVector(dx: 0, dy: 0),
+            ageRemaining: 0.1,
+            totalAge: 0.5,
+            radius: 0.01,
+            red: 1, green: 1, blue: 1
+        )
+        state.particles = [p]
+
+        state.updateParticles(dt: 0.2)  // past the age
+
+        XCTAssertTrue(state.particles.isEmpty)
+    }
 }

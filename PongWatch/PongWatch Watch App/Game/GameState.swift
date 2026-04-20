@@ -191,6 +191,16 @@ final class GameState: ObservableObject {
         particles = newParticles
     }
 
+    func updateParticles(dt: CGFloat) {
+        guard !particles.isEmpty else { return }
+        for i in particles.indices {
+            particles[i].position.x += particles[i].velocity.dx * dt
+            particles[i].position.y += particles[i].velocity.dy * dt
+            particles[i].ageRemaining -= dt
+        }
+        particles.removeAll { $0.ageRemaining <= 0 }
+    }
+
     private func startCountdown() {
         ball.position = CGPoint(x: 0.5, y: 0.5)
         ball.velocity = .zero
