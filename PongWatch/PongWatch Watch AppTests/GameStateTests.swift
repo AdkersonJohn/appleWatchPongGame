@@ -423,4 +423,14 @@ final class GameStateTests: XCTestCase {
 
         XCTAssertTrue(state.particles.isEmpty)
     }
+
+    func test_resetClearsParticles() {
+        let state = GameState()
+        state.spawnScoreBurst(atX: 0.5)
+        XCTAssertFalse(state.particles.isEmpty)  // sanity
+
+        state.reset()
+
+        XCTAssertTrue(state.particles.isEmpty)
+    }
 }

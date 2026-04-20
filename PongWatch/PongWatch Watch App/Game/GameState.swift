@@ -38,6 +38,7 @@ final class GameState: ObservableObject {
         aiPaddleX = 0.5
         countdownRemaining = nil
         countdownElapsed = 0
+        particles = []
     }
 
     func startGame() {
