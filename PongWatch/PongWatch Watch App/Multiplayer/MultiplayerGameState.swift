@@ -222,6 +222,41 @@ final class MultiplayerGameState: ObservableObject {
         matchPhase = .matchOver(winner: winner)
     }
 
+    // MARK: - Scene-phase / wrist-down handling
+
+    enum LocalScenePhase { case active, inactive }
+
+    private var graceSeconds: Double = GameConstants.multiplayerGraceSeconds
+    private var wristDownTask: Task<Void, Never>?
+
+    func setGraceSecondsForTests(_ seconds: Double) {
+        graceSeconds = seconds
+    }
+
+    func onScenePhaseChanged(to phase: LocalScenePhase) {
+        guard case .playing = matchPhase else { return }
+        switch phase {
+        case .inactive:
+            guard let role = service.role else { return }
+            service.send(.paused(role: role), reliable: true)
+            wristDownTask?.cancel()
+            let grace = graceSeconds
+            wristDownTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.service.send(.forfeit(by: role), reliable: true)
+                    self.matchPhase = .matchOver(winner: role.opposite)
+                }
+            }
+        case .active:
+            wristDownTask?.cancel()
+            wristDownTask = nil
+            guard let role = service.role else { return }
+            service.send(.resumed(role: role), reliable: true)
+        }
+    }
+
     private func broadcastSnapshot(
         scoreEvent: ScoreEvent? = nil,
         hostPaddleHit: Bool = false,
