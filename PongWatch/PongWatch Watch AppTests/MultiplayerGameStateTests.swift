@@ -323,6 +323,42 @@ final class MultiplayerGameStateTests: XCTestCase {
         }
         XCTAssertEqual(pausedSends.count, 1)
     }
+
+    func test_requestRematchAsHostSendsAndResets() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        state.requestRematch()
+        let rematchSends = fake.sentMessages.filter {
+            if case .rematchRequest = $0.message { return true } else { return false }
+        }
+        XCTAssertEqual(rematchSends.count, 1)
+        XCTAssertEqual(state.hostScore, 0)
+        XCTAssertEqual(state.clientScore, 0)
+        if case .playing = state.matchPhase {} else { XCTFail("Expected .playing") }
+    }
+
+    func test_clientReceivingRematchResetsScoresAndPlays() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        fake.simulateIncoming(.rematchRequest)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.hostScore, 0)
+        XCTAssertEqual(state.clientScore, 0)
+        if case .playing = state.matchPhase {} else { XCTFail("Expected .playing") }
+    }
+
+    func test_leaveMatchTearsDownSession() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        state.leaveMatch()
+        XCTAssertEqual(fake.connectionState, .idle)
+    }
 }
 
 // MARK: - Test helpers
