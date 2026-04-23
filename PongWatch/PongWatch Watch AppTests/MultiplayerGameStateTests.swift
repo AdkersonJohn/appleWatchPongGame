@@ -104,9 +104,8 @@ final class MultiplayerGameStateTests: XCTestCase {
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
-        // "My" paddle (bottom of screen) uses clientPaddleX from the snapshot.
-        XCTAssertEqual(state.game.playerPaddleX, 0.6, accuracy: 1e-6)
-        // "Opponent" paddle (top of screen) = hostPaddleX.
+        // "My" paddle uses local prediction only; snapshot clientPaddleX is ignored.
+        XCTAssertEqual(state.game.playerPaddleX, 0.5, accuracy: 1e-6)  // unchanged default
         XCTAssertEqual(state.game.aiPaddleX, 0.4, accuracy: 1e-6)
     }
 
@@ -179,5 +178,29 @@ final class MultiplayerGameStateTests: XCTestCase {
         fake.simulateIncoming(.paddleInput(older))
         try? await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(game.aiPaddleX, 0.83, accuracy: 1e-6)
+    }
+
+    func test_clientSnapshotDoesNotOverwriteLocallyPredictedPaddle() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        // Local crown input sets our predicted paddle.
+        state.setLocalPaddle(normalizedCrown: 0.42)
+        // Now a snapshot arrives with a stale clientPaddleX.
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.5, clientPaddleX: 0.15,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Our local prediction wins.
+        XCTAssertEqual(state.game.playerPaddleX, 0.42, accuracy: 1e-6)
+        // Opponent still trusts the snapshot.
+        XCTAssertEqual(state.game.aiPaddleX, 0.5, accuracy: 1e-6)
     }
 }

@@ -110,8 +110,7 @@ final class MultiplayerGameState: ObservableObject {
             position: CGPoint(x: snap.ballX, y: 1.0 - snap.ballY),
             velocity: CGVector(dx: snap.ballVX, dy: -snap.ballVY)
         )
-        // "Me" (bottom) = client; opponent (top) = host.
-        game.playerPaddleX = snap.clientPaddleX
+        // DO NOT overwrite game.playerPaddleX — that's our locally predicted paddle.
         game.aiPaddleX = snap.hostPaddleX
         game.score = snap.clientScore
         game.countdownRemaining = snap.countdownRemaining
