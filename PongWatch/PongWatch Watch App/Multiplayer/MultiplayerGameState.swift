@@ -75,7 +75,58 @@ final class MultiplayerGameState: ObservableObject {
 
     @MainActor
     private func handle(_ message: NetworkMessage) {
-        // Filled in by later tasks.
+        switch message {
+        case .snapshot(let snap):
+            applyIncomingSnapshot(snap)
+        case .paddleInput(let input):
+            applyIncomingPaddleInput(input)
+        case .rematchRequest:
+            handleRematchRequest()
+        case .endMatch:
+            matchPhase = .disconnected
+        case .paused(_):
+            if matchPhase == .playing { matchPhase = .pausedByOpponent }
+        case .resumed(_):
+            if matchPhase == .pausedByOpponent { matchPhase = .playing }
+        case .forfeit(let by):
+            let winner: PeerRole = (by == .host) ? .client : .host
+            matchPhase = .matchOver(winner: winner)
+        }
+    }
+
+    // MARK: - Client snapshot apply
+
+    private func applyIncomingSnapshot(_ snap: GameSnapshot) {
+        guard service.role == .client else { return }
+        // Drop out-of-order snapshots (wrap-safe compare).
+        let delta = snap.tickSeq &- lastReceivedTickSeq
+        if delta == 0 || delta > UInt32.max / 2 { return }
+        lastReceivedTickSeq = snap.tickSeq
+
+        // Flip host coords → client coords.
+        game.ball = Ball(
+            position: CGPoint(x: snap.ballX, y: 1.0 - snap.ballY),
+            velocity: CGVector(dx: snap.ballVX, dy: -snap.ballVY)
+        )
+        // "Me" (bottom) = client; opponent (top) = host.
+        game.playerPaddleX = snap.clientPaddleX
+        game.aiPaddleX = snap.hostPaddleX
+        game.score = snap.clientScore
+        game.countdownRemaining = snap.countdownRemaining
+        game.phase = snap.phase
+
+        hostScore = snap.hostScore
+        clientScore = snap.clientScore
+    }
+
+    // MARK: - Placeholder handlers (implemented in later tasks)
+
+    private func applyIncomingPaddleInput(_ input: PaddleInput) {
+        // Task 10
+    }
+
+    private func handleRematchRequest() {
+        // Task 15
     }
 
     // MARK: - Host tick

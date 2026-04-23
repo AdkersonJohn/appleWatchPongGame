@@ -65,4 +65,78 @@ final class MultiplayerGameStateTests: XCTestCase {
         }
         XCTAssertTrue(snapshotSends.isEmpty)
     }
+
+    func test_clientFlipsBallYOnIncomingSnapshot() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.3, ballY: 0.2, ballVX: 0, ballVY: 0.5,
+            hostPaddleX: 0.4, clientPaddleX: 0.6,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Client sees itself at the bottom → flip y.
+        XCTAssertEqual(state.game.ball.position.y, 0.8, accuracy: 1e-6)   // 1.0 - 0.2
+        XCTAssertEqual(state.game.ball.position.x, 0.3, accuracy: 1e-6)   // x unchanged
+        // Velocity Y is flipped too.
+        XCTAssertEqual(state.game.ball.velocity.dy, -0.5, accuracy: 1e-6)
+    }
+
+    func test_clientPaddleAssignmentFlipped() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.4,
+            clientPaddleX: 0.6,
+            hostScore: 1, clientScore: 2,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        // "My" paddle (bottom of screen) uses clientPaddleX from the snapshot.
+        XCTAssertEqual(state.game.playerPaddleX, 0.6, accuracy: 1e-6)
+        // "Opponent" paddle (top of screen) = hostPaddleX.
+        XCTAssertEqual(state.game.aiPaddleX, 0.4, accuracy: 1e-6)
+    }
+
+    func test_clientIgnoresOutOfOrderSnapshots() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        let newerSnap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.7, ballY: 0.3, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0, clientPaddleX: 0,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 10
+        )
+        let olderSnap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.1, ballY: 0.9, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0, clientPaddleX: 0,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 5
+        )
+        fake.simulateIncoming(.snapshot(newerSnap))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        fake.simulateIncoming(.snapshot(olderSnap))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        // Newer snapshot's ball position should still apply.
+        XCTAssertEqual(state.game.ball.position.x, 0.7, accuracy: 1e-6)
+    }
 }
