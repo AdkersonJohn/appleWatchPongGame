@@ -281,6 +281,48 @@ final class MultiplayerGameStateTests: XCTestCase {
         let haptic = game.injectedHapticPlayerForTests as! RecordingHapticPlayer
         XCTAssertEqual(haptic.clickCount, 1)
     }
+
+    func test_wristDownUnderGracePeriodDoesNotForfeit() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
+        state.onScenePhaseChanged(to: .inactive)
+        try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
+        state.onScenePhaseChanged(to: .active)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Match still playing.
+        if case .playing = state.matchPhase {} else { XCTFail("Expected .playing, got \(state.matchPhase)") }
+    }
+
+    func test_wristDownOverGracePeriodForfeits() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
+        // Use a tiny grace for the test.
+        state.setGraceSecondsForTests(0.05)
+        state.onScenePhaseChanged(to: .inactive)
+        try? await Task.sleep(nanoseconds: 200_000_000)  // 0.2s exceeds 0.05s grace
+        if case .matchOver(let winner) = state.matchPhase {
+            XCTAssertEqual(winner, .client)  // host forfeited → client wins
+        } else {
+            XCTFail("Expected .matchOver, got \(state.matchPhase)")
+        }
+    }
+
+    func test_wristDownSendsPausedMessage() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
+        state.onScenePhaseChanged(to: .inactive)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let pausedSends = fake.sentMessages.filter {
+            if case .paused = $0.message { return true } else { return false }
+        }
+        XCTAssertEqual(pausedSends.count, 1)
+    }
 }
 
 // MARK: - Test helpers
