@@ -27,6 +27,8 @@ final class MultiplayerGameState: ObservableObject {
     private var lastReceivedTickSeq: UInt32 = 0
     private var lastPaddleInputSeq: UInt32 = 0
     private var localPaddleInputSeq: UInt32 = 0
+    private var lastPeerActivityAt: Date?
+    private var peerSilenceTimeout: Double = GameConstants.peerSilenceTimeoutSeconds
 
     init(service: any MultiplayerServiceProtocol,
          game: GameState = GameState()) {
@@ -60,6 +62,7 @@ final class MultiplayerGameState: ObservableObject {
             self.role = newRole
             if matchPhase == .pairing {
                 matchPhase = .playing
+                lastPeerActivityAt = Date()
             }
         case .disconnected:
             let winnerRole = priorRole ?? newRole
@@ -92,6 +95,7 @@ final class MultiplayerGameState: ObservableObject {
 
     @MainActor
     private func handle(_ message: NetworkMessage) {
+        lastPeerActivityAt = Date()
         switch message {
         case .snapshot(let snap):
             applyIncomingSnapshot(snap)
@@ -139,6 +143,18 @@ final class MultiplayerGameState: ObservableObject {
         // Celebrate only if we scored.
         if let event = snap.scoreEvent, event.scoredBy == .client {
             game.spawnScoreBurst(atX: event.impactX)
+        }
+
+        // The host transitions to .matchOver locally once a score hits the
+        // winning threshold and then stops sending snapshots. Without this
+        // check the client would stay in .playing forever, frozen on the
+        // final snapshot. Derive match end from the scores we just applied.
+        if case .playing = matchPhase {
+            if hostScore >= GameConstants.multiplayerWinningScore {
+                matchPhase = .matchOver(winner: .host)
+            } else if clientScore >= GameConstants.multiplayerWinningScore {
+                matchPhase = .matchOver(winner: .client)
+            }
         }
     }
 
@@ -199,11 +215,27 @@ final class MultiplayerGameState: ObservableObject {
         }
     }
 
-    // MARK: - Host tick
+    // MARK: - Tick
 
-    /// Called once per render tick on the host. Advances physics and sends a snapshot.
-    /// No-op on the client.
-    func tickIfHost(dt: CGFloat) {
+    /// Called once per render tick by `GameView`. Runs the bilateral
+    /// peer-silence watchdog, then on the host advances physics and
+    /// broadcasts a snapshot. A no-op after the match ends.
+    func tick(dt: CGFloat) {
+        // Peer-silence watchdog — fires for either role when the peer has
+        // gone silent longer than the timeout. Covers the simulator / LAN
+        // cases where NWConnection doesn't surface a failure promptly.
+        // Scoped to active play so a legitimate pairing handshake or an
+        // already-ended match doesn't false-fire.
+        if matchPhase == .playing || matchPhase == .pausedByOpponent {
+            if let last = lastPeerActivityAt,
+               Date().timeIntervalSince(last) > peerSilenceTimeout,
+               let myRole = service.role {
+                matchPhase = .matchOver(winner: myRole)
+                service.disconnect()
+                return
+            }
+        }
+
         guard service.role == .host else { return }
         let scoreBefore = game.score
         let phaseBefore = game.phase
@@ -271,6 +303,10 @@ final class MultiplayerGameState: ObservableObject {
 
     func setGraceSecondsForTests(_ seconds: Double) {
         graceSeconds = seconds
+    }
+
+    func setPeerSilenceTimeoutForTests(_ seconds: Double) {
+        peerSilenceTimeout = seconds
     }
 
     func onScenePhaseChanged(to phase: LocalScenePhase) {

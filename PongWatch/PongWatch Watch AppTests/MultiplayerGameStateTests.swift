@@ -34,7 +34,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
-        state.tickIfHost(dt: 1.0 / 30.0)
+        state.tick(dt: 1.0 / 30.0)
         let snapshotSends = fake.sentMessages.compactMap { msg -> GameSnapshot? in
             if case .snapshot(let s) = msg.message { return s } else { return nil }
         }
@@ -51,7 +51,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         let state = MultiplayerGameState(service: fake, game: game)
         fake.simulateConnected(as: .host)
         let startX = game.ball.position.x
-        state.tickIfHost(dt: 0.1)
+        state.tick(dt: 0.1)
         XCTAssertNotEqual(game.ball.position.x, startX)
     }
 
@@ -59,7 +59,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
-        state.tickIfHost(dt: 1.0 / 30.0)
+        state.tick(dt: 1.0 / 30.0)
         let snapshotSends = fake.sentMessages.filter {
             if case .snapshot = $0.message { return true } else { return false }
         }
@@ -213,7 +213,7 @@ final class MultiplayerGameStateTests: XCTestCase {
                          velocity: CGVector(dx: 0, dy: -1.0))
         let state = MultiplayerGameState(service: fake, game: game)
         fake.simulateConnected(as: .host)
-        state.tickIfHost(dt: 0.1)
+        state.tick(dt: 0.1)
         let scoringSnap = fake.sentMessages.compactMap { msg -> GameSnapshot? in
             if case .snapshot(let s) = msg.message, s.scoreEvent != nil { return s } else { return nil }
         }.first
@@ -372,6 +372,78 @@ final class MultiplayerGameStateTests: XCTestCase {
         } else {
             XCTFail("Expected .matchOver(winner: .host), got \(state.matchPhase)")
         }
+    }
+
+    func test_clientTransitionsToMatchOverWhenSnapshotShowsWinningScore() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: GameConstants.multiplayerWinningScore, clientScore: 3,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        if case .matchOver(let winner) = state.matchPhase {
+            XCTAssertEqual(winner, .host)
+        } else {
+            XCTFail("Expected .matchOver(winner: .host), got \(state.matchPhase)")
+        }
+    }
+
+    func test_peerSilenceTimeoutEndsMatchForLocalRole() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        state.setPeerSilenceTimeoutForTests(0.05)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0.5,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        // Now wait well past the 50ms injected timeout — peer is "silent".
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        state.tick(dt: 1.0 / 60.0)
+        if case .matchOver(let winner) = state.matchPhase {
+            XCTAssertEqual(winner, .client)
+        } else {
+            XCTFail("Expected .matchOver(winner: .client), got \(state.matchPhase)")
+        }
+    }
+
+    func test_recentPeerActivityDoesNotTriggerSilenceTimeout() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        state.setPeerSilenceTimeoutForTests(0.5)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0.5,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: 1, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        state.tick(dt: 1.0 / 60.0)
+        // Still well inside the 500ms window — match must continue.
+        XCTAssertEqual(state.matchPhase, .playing)
     }
 }
 

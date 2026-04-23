@@ -83,7 +83,7 @@ struct ContentView: View {
             GameView(
                 state: mpState.game,
                 multiplayerScores: (mine: myScore, opp: oppScore),
-                onTick: { dt in mpState.tickIfHost(dt: dt) },
+                onTick: { dt in mpState.tick(dt: dt) },
                 onCrownChange: { v in mpState.setLocalPaddle(normalizedCrown: v) }
             )
             .onAppear {
