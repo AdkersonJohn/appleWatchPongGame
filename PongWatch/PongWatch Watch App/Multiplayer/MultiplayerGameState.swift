@@ -25,6 +25,8 @@ final class MultiplayerGameState: ObservableObject {
     private var incomingTask: Task<Void, Never>?
     private var tickSeq: UInt32 = 0
     private var lastReceivedTickSeq: UInt32 = 0
+    private var lastPaddleInputSeq: UInt32 = 0
+    private var localPaddleInputSeq: UInt32 = 0
 
     init(service: any MultiplayerServiceProtocol,
          game: GameState = GameState()) {
@@ -122,11 +124,33 @@ final class MultiplayerGameState: ObservableObject {
     // MARK: - Placeholder handlers (implemented in later tasks)
 
     private func applyIncomingPaddleInput(_ input: PaddleInput) {
-        // Task 10
+        guard service.role == .host else { return }
+        let delta = input.tickSeq &- lastPaddleInputSeq
+        if delta == 0 || delta > UInt32.max / 2 { return }
+        lastPaddleInputSeq = input.tickSeq
+        game.aiPaddleX = input.paddleX
     }
 
     private func handleRematchRequest() {
         // Task 15
+    }
+
+    // MARK: - Paddle input
+
+    /// View calls this when the Digital Crown changes. Works for both roles.
+    func setLocalPaddle(normalizedCrown value: CGFloat) {
+        let clamped = max(0, min(1, value))
+        // Both roles update their own inner-game player paddle for local rendering.
+        game.setPlayerPaddle(normalizedCrown: clamped)
+        if service.role == .client {
+            localPaddleInputSeq &+= 1
+            let input = PaddleInput(
+                protoVersion: GameConstants.multiplayerProtocolVersion,
+                paddleX: clamped,
+                tickSeq: localPaddleInputSeq
+            )
+            service.send(.paddleInput(input), reliable: false)
+        }
     }
 
     // MARK: - Host tick
@@ -135,7 +159,12 @@ final class MultiplayerGameState: ObservableObject {
     /// No-op on the client.
     func tickIfHost(dt: CGFloat) {
         guard service.role == .host else { return }
+        // Client paddle position is already stored in game.aiPaddleX by
+        // applyIncomingPaddleInput. game.update(dt:) runs AI tracking over it,
+        // so we revert to the client's actual position immediately after physics.
+        let clientPaddleBeforeTick = game.aiPaddleX
         game.update(dt: dt)
+        game.aiPaddleX = clientPaddleBeforeTick
         broadcastSnapshot()
     }
 
