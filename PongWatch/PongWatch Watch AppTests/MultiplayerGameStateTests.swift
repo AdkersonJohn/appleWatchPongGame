@@ -359,6 +359,20 @@ final class MultiplayerGameStateTests: XCTestCase {
         state.leaveMatch()
         XCTAssertEqual(fake.connectionState, .idle)
     }
+
+    func test_disconnectMidMatchEndsWithLocalWin() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateDisconnect()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        if case .matchOver(let winner) = state.matchPhase {
+            XCTAssertEqual(winner, .host)
+        } else {
+            XCTFail("Expected .matchOver(winner: .host), got \(state.matchPhase)")
+        }
+    }
 }
 
 // MARK: - Test helpers
