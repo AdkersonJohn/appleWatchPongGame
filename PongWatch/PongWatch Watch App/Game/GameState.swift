@@ -51,6 +51,14 @@ final class GameState: ObservableObject {
         startCountdown()
     }
 
+    /// Public entry point used by multiplayer to start a fresh serve.
+    /// Resets ball to center and starts the 3-2-1 countdown without touching score.
+    func prepareNextServe() {
+        ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+        countdownRemaining = GameConstants.countdownStart
+        countdownElapsed = 0
+    }
+
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
         let half = GameConstants.paddleWidth / 2
         playerPaddleX = max(half, min(1 - half, value))

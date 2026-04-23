@@ -203,4 +203,62 @@ final class MultiplayerGameStateTests: XCTestCase {
         // Opponent still trusts the snapshot.
         XCTAssertEqual(state.game.aiPaddleX, 0.5, accuracy: 1e-6)
     }
+
+    func test_hostScoreEventWhenBallExitsTop() {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        game.phase = .playing
+        // Ball near top with upward velocity → will exit on next step.
+        game.ball = Ball(position: CGPoint(x: 0.3, y: 0.01),
+                         velocity: CGVector(dx: 0, dy: -1.0))
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .host)
+        state.tickIfHost(dt: 0.1)
+        let scoringSnap = fake.sentMessages.compactMap { msg -> GameSnapshot? in
+            if case .snapshot(let s) = msg.message, s.scoreEvent != nil { return s } else { return nil }
+        }.first
+        XCTAssertNotNil(scoringSnap)
+        XCTAssertEqual(scoringSnap?.scoreEvent?.scoredBy, .host)
+        XCTAssertEqual(state.hostScore, 1)
+    }
+
+    func test_clientSpawnsParticlesWhenTheyAreTheScorer() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        game.phase = .playing
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .client)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.0, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: 0, clientScore: 1,
+            countdownRemaining: 3,
+            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .client),
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.game.particles.count, GameConstants.particlesPerBurst)
+    }
+
+    func test_clientDoesNotSpawnParticlesWhenHostScores() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.0, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: 1, clientScore: 0,
+            countdownRemaining: 3,
+            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .host),
+            hostPaddleHit: false, clientPaddleHit: false,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(state.game.particles.isEmpty)
+    }
 }
