@@ -53,16 +53,31 @@ final class MultiplayerGameState: ObservableObject {
     }
 
     private func handleServiceStateChange() {
-        self.role = service.role
+        let priorRole = self.role
+        let newRole = service.role
         switch service.connectionState {
         case .connected:
+            self.role = newRole
             if matchPhase == .pairing {
                 matchPhase = .playing
             }
         case .disconnected:
-            matchPhase = .disconnected
+            let winnerRole = priorRole ?? newRole
+            self.role = nil
+            // If a previous handler already resolved the match (e.g. to
+            // .matchOver on a mid-match drop), don't clobber it.
+            if case .matchOver = matchPhase { return }
+            if matchPhase == .playing || matchPhase == .pausedByOpponent {
+                if let winner = winnerRole {
+                    matchPhase = .matchOver(winner: winner)
+                } else {
+                    matchPhase = .disconnected
+                }
+            } else {
+                matchPhase = .disconnected
+            }
         default:
-            break
+            self.role = newRole
         }
     }
 
