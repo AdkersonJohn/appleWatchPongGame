@@ -139,4 +139,45 @@ final class MultiplayerGameStateTests: XCTestCase {
         // Newer snapshot's ball position should still apply.
         XCTAssertEqual(state.game.ball.position.x, 0.7, accuracy: 1e-6)
     }
+
+    func test_clientSendsPaddleInputOnCrown() {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        state.setLocalPaddle(normalizedCrown: 0.72)
+        let inputs: [PaddleInput] = fake.sentMessages.compactMap {
+            if case .paddleInput(let p) = $0.message { return p } else { return nil }
+        }
+        XCTAssertEqual(inputs.count, 1)
+        XCTAssertEqual(inputs[0].paddleX, 0.72, accuracy: 1e-6)
+    }
+
+    func test_hostAppliesIncomingPaddleInput() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        game.phase = .playing
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .host)
+        let input = PaddleInput(protoVersion: 1, paddleX: 0.83, tickSeq: 1)
+        fake.simulateIncoming(.paddleInput(input))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Host stores the client paddle into the inner GameState's aiPaddleX slot
+        // (which represents the top paddle in host-coord physics).
+        XCTAssertEqual(game.aiPaddleX, 0.83, accuracy: 1e-6)
+    }
+
+    func test_hostIgnoresOutOfOrderPaddleInput() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        game.phase = .playing
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .host)
+        let newer = PaddleInput(protoVersion: 1, paddleX: 0.83, tickSeq: 5)
+        let older = PaddleInput(protoVersion: 1, paddleX: 0.10, tickSeq: 3)
+        fake.simulateIncoming(.paddleInput(newer))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        fake.simulateIncoming(.paddleInput(older))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertEqual(game.aiPaddleX, 0.83, accuracy: 1e-6)
+    }
 }
