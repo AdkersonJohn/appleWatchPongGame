@@ -100,12 +100,10 @@ final class MultiplayerGameState: ObservableObject {
 
     private func applyIncomingSnapshot(_ snap: GameSnapshot) {
         guard service.role == .client else { return }
-        // Drop out-of-order snapshots (wrap-safe compare).
         let delta = snap.tickSeq &- lastReceivedTickSeq
         if delta == 0 || delta > UInt32.max / 2 { return }
         lastReceivedTickSeq = snap.tickSeq
 
-        // Flip host coords → client coords.
         game.ball = Ball(
             position: CGPoint(x: snap.ballX, y: 1.0 - snap.ballY),
             velocity: CGVector(dx: snap.ballVX, dy: -snap.ballVY)
@@ -118,6 +116,11 @@ final class MultiplayerGameState: ObservableObject {
 
         hostScore = snap.hostScore
         clientScore = snap.clientScore
+
+        // Celebrate only if we scored.
+        if let event = snap.scoreEvent, event.scoredBy == .client {
+            game.spawnScoreBurst(atX: event.impactX)
+        }
     }
 
     // MARK: - Placeholder handlers (implemented in later tasks)
@@ -158,16 +161,50 @@ final class MultiplayerGameState: ObservableObject {
     /// No-op on the client.
     func tickIfHost(dt: CGFloat) {
         guard service.role == .host else { return }
-        // Client paddle position is already stored in game.aiPaddleX by
-        // applyIncomingPaddleInput. game.update(dt:) runs AI tracking over it,
-        // so we revert to the client's actual position immediately after physics.
+        let scoreBefore = game.score
+        let phaseBefore = game.phase
         let clientPaddleBeforeTick = game.aiPaddleX
+
         game.update(dt: dt)
         game.aiPaddleX = clientPaddleBeforeTick
-        broadcastSnapshot()
+
+        var pendingScoreEvent: ScoreEvent? = nil
+
+        // Host scored: inner game's score went up (ball exited top in host space).
+        if game.score > scoreBefore {
+            hostScore += game.score - scoreBefore
+            pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .host)
+        }
+
+        // Client scored: inner game flipped to .gameOver because ball exited bottom.
+        if phaseBefore == .playing && game.phase == .gameOver {
+            clientScore += 1
+            pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .client)
+            game.phase = .playing
+            game.prepareNextServe()
+        }
+
+        // Check match-over.
+        if hostScore >= GameConstants.multiplayerWinningScore {
+            finishMatch(winner: .host)
+        } else if clientScore >= GameConstants.multiplayerWinningScore {
+            finishMatch(winner: .client)
+        }
+
+        broadcastSnapshot(scoreEvent: pendingScoreEvent)
+
+        // Only the host spawns particles on its own score. The client will spawn
+        // from the snapshot event in applyIncomingSnapshot.
+        if let ev = pendingScoreEvent, ev.scoredBy == .host {
+            game.spawnScoreBurst(atX: ev.impactX)
+        }
     }
 
-    private func broadcastSnapshot() {
+    private func finishMatch(winner: PeerRole) {
+        matchPhase = .matchOver(winner: winner)
+    }
+
+    private func broadcastSnapshot(scoreEvent: ScoreEvent? = nil) {
         tickSeq &+= 1
         let snap = GameSnapshot(
             protoVersion: GameConstants.multiplayerProtocolVersion,
@@ -181,7 +218,7 @@ final class MultiplayerGameState: ObservableObject {
             hostScore: hostScore,
             clientScore: clientScore,
             countdownRemaining: game.countdownRemaining,
-            scoreEvent: nil,
+            scoreEvent: scoreEvent,
             hostPaddleHit: false,
             clientPaddleHit: false,
             tickSeq: tickSeq
