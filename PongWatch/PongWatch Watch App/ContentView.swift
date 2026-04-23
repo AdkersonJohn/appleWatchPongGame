@@ -6,9 +6,10 @@ struct ContentView: View {
     var body: some View {
         switch state.phase {
         case .start:
-            StartView(onStart: {
-                state.startGame()
-            })
+            StartView(
+                onStartSinglePlayer: { state.startGame() },
+                onStartMultiplayer: { /* Task 19 wires this */ }
+            )
         case .playing:
             GameView(state: state)
         case .gameOver:
