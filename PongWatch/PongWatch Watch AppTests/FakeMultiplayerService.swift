@@ -11,6 +11,10 @@ final class FakeMultiplayerService: MultiplayerServiceProtocol {
     private var continuation: AsyncStream<NetworkMessage>.Continuation!
     let incomingMessages: AsyncStream<NetworkMessage>
 
+    var statePublisher: AnyPublisher<Void, Never> {
+        objectWillChange.eraseToAnyPublisher()
+    }
+
     /// Messages the SUT sent via `send(...)`. Inspect in assertions.
     private(set) var sentMessages: [(message: NetworkMessage, reliable: Bool)] = []
 

@@ -12,6 +12,10 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     let incomingMessages: AsyncStream<NetworkMessage>
     private let messageContinuation: AsyncStream<NetworkMessage>.Continuation
 
+    var statePublisher: AnyPublisher<Void, Never> {
+        objectWillChange.eraseToAnyPublisher()
+    }
+
     private let displayName: String
     private let bonjourType: String
     private let queue = DispatchQueue(label: "mp.service.queue")

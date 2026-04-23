@@ -16,6 +16,9 @@ protocol MultiplayerServiceProtocol: AnyObject, ObservableObject {
     var connectionState: MPConnectionState { get }
     var role: PeerRole? { get }
     var incomingMessages: AsyncStream<NetworkMessage> { get }
+    /// Type-erased publisher that fires whenever any service state changes.
+    /// Conformers can implement this as `objectWillChange.eraseToAnyPublisher()`.
+    var statePublisher: AnyPublisher<Void, Never> { get }
 
     func startAdvertising()
     func stopAdvertising()
