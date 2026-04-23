@@ -4,6 +4,14 @@ struct GameView: View {
     @ObservedObject var state: GameState
     @Environment(\.scenePhase) private var scenePhase
     @State private var crownValue: Double = 0.5
+    /// Optional (myScore, opponentScore) overlay for multiplayer mode.
+    var multiplayerScores: (mine: Int, opp: Int)? = nil
+    /// Closure called every render tick (for MP host physics + snapshot send).
+    /// If nil, GameView runs single-player update via state.update(dt:).
+    var onTick: ((CGFloat) -> Void)? = nil
+    /// Closure called when the crown changes — replaces default state.setPlayerPaddle.
+    /// If nil, default behavior is used.
+    var onCrownChange: ((CGFloat) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -24,7 +32,11 @@ struct GameView: View {
             isHapticFeedbackEnabled: true
         )
         .onChange(of: crownValue) { _, newValue in
-            state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
+            if let onCrownChange {
+                onCrownChange(CGFloat(newValue))
+            } else {
+                state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
+            }
         }
         .task(id: scenePhase) {
             // Restarts on scenePhase change. When the user drops their wrist
@@ -43,7 +55,12 @@ struct GameView: View {
                 // (wrist-down, Always-On). Treat this tick as a resume and
                 // skip it so the ball doesn't teleport.
                 if dt > 0.1 { continue }
-                state.update(dt: min(dt, 0.05))
+                let clampedDt = min(dt, 0.05)
+                if let onTick {
+                    onTick(clampedDt)
+                } else {
+                    state.update(dt: clampedDt)
+                }
             }
         }
     }
@@ -89,8 +106,14 @@ struct GameView: View {
         }
 
         // Score
-        let scoreText = Text("\(state.score)").font(.caption2).foregroundColor(.white)
-        context.draw(scoreText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
+        if let mp = multiplayerScores {
+            let mpText = Text("\(mp.mine) — \(mp.opp)")
+                .font(.caption2).foregroundColor(.white)
+            context.draw(mpText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
+        } else {
+            let scoreText = Text("\(state.score)").font(.caption2).foregroundColor(.white)
+            context.draw(scoreText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
+        }
 
         // Scoring burst particles
         for p in state.particles {
