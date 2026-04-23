@@ -117,6 +117,10 @@ final class MultiplayerGameState: ObservableObject {
         hostScore = snap.hostScore
         clientScore = snap.clientScore
 
+        if snap.clientPaddleHit {
+            game.playPaddleHitHaptic()
+        }
+
         // Celebrate only if we scored.
         if let event = snap.scoreEvent, event.scoredBy == .client {
             game.spawnScoreBurst(atX: event.impactX)
@@ -164,9 +168,19 @@ final class MultiplayerGameState: ObservableObject {
         let scoreBefore = game.score
         let phaseBefore = game.phase
         let clientPaddleBeforeTick = game.aiPaddleX
+        let ballVYBefore = game.ball.velocity.dy
 
         game.update(dt: dt)
         game.aiPaddleX = clientPaddleBeforeTick
+
+        // Client paddle hit: ball was moving up (negative dy in host space) and is
+        // now moving down (positive dy) with the ball near the top paddle line.
+        let clientPaddleHit = ballVYBefore < 0 && game.ball.velocity.dy > 0 &&
+                              game.ball.position.y < GameConstants.paddleMarginY + GameConstants.paddleHeight
+
+        // Host paddle hit: ball was moving down and is now moving up near the bottom.
+        let hostPaddleHit = ballVYBefore > 0 && game.ball.velocity.dy < 0 &&
+                            game.ball.position.y > 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight
 
         var pendingScoreEvent: ScoreEvent? = nil
 
@@ -191,7 +205,11 @@ final class MultiplayerGameState: ObservableObject {
             finishMatch(winner: .client)
         }
 
-        broadcastSnapshot(scoreEvent: pendingScoreEvent)
+        broadcastSnapshot(
+            scoreEvent: pendingScoreEvent,
+            hostPaddleHit: hostPaddleHit,
+            clientPaddleHit: clientPaddleHit
+        )
 
         // Only the host spawns particles on its own score. The client will spawn
         // from the snapshot event in applyIncomingSnapshot.
@@ -204,7 +222,11 @@ final class MultiplayerGameState: ObservableObject {
         matchPhase = .matchOver(winner: winner)
     }
 
-    private func broadcastSnapshot(scoreEvent: ScoreEvent? = nil) {
+    private func broadcastSnapshot(
+        scoreEvent: ScoreEvent? = nil,
+        hostPaddleHit: Bool = false,
+        clientPaddleHit: Bool = false
+    ) {
         tickSeq &+= 1
         let snap = GameSnapshot(
             protoVersion: GameConstants.multiplayerProtocolVersion,
@@ -219,8 +241,8 @@ final class MultiplayerGameState: ObservableObject {
             clientScore: clientScore,
             countdownRemaining: game.countdownRemaining,
             scoreEvent: scoreEvent,
-            hostPaddleHit: false,
-            clientPaddleHit: false,
+            hostPaddleHit: hostPaddleHit,
+            clientPaddleHit: clientPaddleHit,
             tickSeq: tickSeq
         )
         service.send(.snapshot(snap), reliable: false)

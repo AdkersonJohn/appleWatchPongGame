@@ -261,4 +261,31 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertTrue(state.game.particles.isEmpty)
     }
+
+    func test_clientPlaysHapticOnClientPaddleHitFlag() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState(highScoreStore: HighScoreStore(), hapticPlayer: RecordingHapticPlayer())
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .client)
+        let snap = GameSnapshot(
+            protoVersion: 1, phase: .playing,
+            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
+            hostPaddleX: 0.5, clientPaddleX: 0.5,
+            hostScore: 0, clientScore: 0,
+            countdownRemaining: nil, scoreEvent: nil,
+            hostPaddleHit: false, clientPaddleHit: true,
+            tickSeq: 1
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let haptic = game.injectedHapticPlayerForTests as! RecordingHapticPlayer
+        XCTAssertEqual(haptic.clickCount, 1)
+    }
+}
+
+// MARK: - Test helpers
+
+final class RecordingHapticPlayer: HapticPlayer {
+    var clickCount = 0
+    func playClick() { clickCount += 1 }
 }
