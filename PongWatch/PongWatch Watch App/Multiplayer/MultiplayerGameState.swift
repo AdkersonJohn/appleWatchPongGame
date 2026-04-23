@@ -77,4 +77,36 @@ final class MultiplayerGameState: ObservableObject {
     private func handle(_ message: NetworkMessage) {
         // Filled in by later tasks.
     }
+
+    // MARK: - Host tick
+
+    /// Called once per render tick on the host. Advances physics and sends a snapshot.
+    /// No-op on the client.
+    func tickIfHost(dt: CGFloat) {
+        guard service.role == .host else { return }
+        game.update(dt: dt)
+        broadcastSnapshot()
+    }
+
+    private func broadcastSnapshot() {
+        tickSeq &+= 1
+        let snap = GameSnapshot(
+            protoVersion: GameConstants.multiplayerProtocolVersion,
+            phase: game.phase,
+            ballX: game.ball.position.x,
+            ballY: game.ball.position.y,
+            ballVX: game.ball.velocity.dx,
+            ballVY: game.ball.velocity.dy,
+            hostPaddleX: game.playerPaddleX,
+            clientPaddleX: game.aiPaddleX,
+            hostScore: hostScore,
+            clientScore: clientScore,
+            countdownRemaining: game.countdownRemaining,
+            scoreEvent: nil,
+            hostPaddleHit: false,
+            clientPaddleHit: false,
+            tickSeq: tickSeq
+        )
+        service.send(.snapshot(snap), reliable: false)
+    }
 }
