@@ -256,4 +256,15 @@ final class GameState: ObservableObject {
         let dy = cos(angle) * speed * (Bool.random() ? 1 : -1)
         return CGVector(dx: dx, dy: dy)
     }
+
+    /// Plays the paddle-hit haptic. Exposed so multiplayer can trigger it when
+    /// the inbound snapshot reports the local paddle hit the ball on the host.
+    func playPaddleHitHaptic() {
+        hapticPlayer.playClick()
+    }
+
+    #if DEBUG
+    /// Test-only accessor to the injected haptic player (for assertions).
+    var injectedHapticPlayerForTests: HapticPlayer { hapticPlayer }
+    #endif
 }
