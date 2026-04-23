@@ -137,8 +137,33 @@ final class MultiplayerGameState: ObservableObject {
         game.aiPaddleX = input.paddleX
     }
 
+    // MARK: - Post-match
+
+    func requestRematch() {
+        guard service.role != nil else { return }
+        service.send(.rematchRequest, reliable: true)
+        startFreshMatch()
+    }
+
+    private func startFreshMatch() {
+        hostScore = 0
+        clientScore = 0
+        tickSeq = 0
+        lastReceivedTickSeq = 0
+        lastPaddleInputSeq = 0
+        localPaddleInputSeq = 0
+        game.prepareNextServe()
+        game.phase = .playing
+        matchPhase = .playing
+    }
+
+    func leaveMatch() {
+        service.disconnect()
+        matchPhase = .pairing
+    }
+
     private func handleRematchRequest() {
-        // Task 15
+        startFreshMatch()
     }
 
     // MARK: - Paddle input
