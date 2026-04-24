@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add watch-to-watch local multiplayer Pong using Apple's MultipeerConnectivity framework, with host-authoritative networking, mirrored views, and all existing single-player niceties preserved.
+**Goal:** Add watch-to-watch local multiplayer Pong using Apple's `Network.framework` + Bonjour (MultipeerConnectivity is iOS-only, not available on watchOS — see spec Addendum A), with host-authoritative networking, mirrored views, and all existing single-player niceties preserved.
 
-**Architecture:** A `MultiplayerService` wraps `MCSession`+advertiser+browser. A `MultiplayerGameState` composes an inner `GameState` with the service and a `PeerRole` (`.host`/`.client`). The host runs normal physics locally and sends 30Hz `GameSnapshot` messages via MC's unreliable mode; the client renders from snapshots, flips Y coordinates, and predicts its own paddle from local crown input. UI adds a `NearbyPlayersView` for pairing and a `MultiplayerGameOverView` for rematch/back, with `StartView` updated to pick SP vs MP.
+**Architecture:** A `MultiplayerService` wraps `NWListener` (advertising), `NWBrowser` (discovery), and one `NWConnection` per active peer. A `MultiplayerGameState` composes an inner `GameState` with the service and a `PeerRole` (`.host`/`.client`). The host runs normal physics locally and sends 30Hz `GameSnapshot` messages via length-prefixed TCP; the client renders from snapshots, flips Y coordinates, and predicts its own paddle from local crown input. UI adds a `NearbyPlayersView` for pairing and a `MultiplayerGameOverView` for rematch/back, with `StartView` updated to pick SP vs MP.
 
-**Tech Stack:** SwiftUI, MultipeerConnectivity, XCTest, watchOS 11+. All new networking code must `import MultipeerConnectivity`. JSON-encoded `Codable` DTOs.
+**Tech Stack:** SwiftUI, `Network.framework`, Bonjour, XCTest, watchOS 11+. JSON-encoded `Codable` DTOs with length-prefix framing.
 
 **Spec:** `docs/superpowers/specs/2026-04-23-watch-multiplayer-design.md`
 
@@ -314,42 +314,57 @@ git commit -m "feat(mp): add GameSnapshot + network message DTOs"
 
 ---
 
-## Task 4: Create MultiplayerServiceProtocol + connection state types
+## Task 4: Create DiscoveredPeer + MultiplayerServiceProtocol + connection state
+
+**Transport note:** MultipeerConnectivity is not available on watchOS. We use `Network.framework` + Bonjour. See spec Addendum A.
 
 **Files:**
+- Create: `PongWatch/PongWatch Watch App/Multiplayer/DiscoveredPeer.swift`
 - Create: `PongWatch/PongWatch Watch App/Multiplayer/MultiplayerServiceProtocol.swift`
 
-- [ ] **Step 1: Write the protocol**
+- [ ] **Step 1: Write `DiscoveredPeer.swift`**
 
 ```swift
 import Foundation
-import MultipeerConnectivity
+import Network
+
+/// A peer discovered via Bonjour browsing.
+///
+/// `id` is a stable identifier derived from the underlying NWEndpoint (Bonjour service name),
+/// which is unique per advertiser. `displayName` comes from the TXT record's `name` key.
+struct DiscoveredPeer: Identifiable, Equatable, Hashable {
+    let id: String
+    let displayName: String
+    let endpoint: NWEndpoint
+
+    static func == (lhs: DiscoveredPeer, rhs: DiscoveredPeer) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}
+```
+
+- [ ] **Step 2: Write `MultiplayerServiceProtocol.swift`**
+
+```swift
+import Foundation
 import Combine
 
 enum MPConnectionState: Equatable {
     case idle
     case discovering
-    case inviting(MCPeerID)
-    case receivingInvite(MCPeerID, handler: (Bool) -> Void)
-    case connected(MCPeerID, role: PeerRole)
+    case inviting(DiscoveredPeer)
+    case receivingInvite(fromDisplayName: String)
+    case connected(peer: DiscoveredPeer, role: PeerRole)
     case disconnected
     case failed(String)
-
-    static func == (lhs: MPConnectionState, rhs: MPConnectionState) -> Bool {
-        switch (lhs, rhs) {
-        case (.idle, .idle), (.discovering, .discovering), (.disconnected, .disconnected):
-            return true
-        case (.inviting(let a), .inviting(let b)): return a == b
-        case (.receivingInvite(let a, _), .receivingInvite(let b, _)): return a == b
-        case (.connected(let a, let ra), .connected(let b, let rb)): return a == b && ra == rb
-        case (.failed(let a), .failed(let b)): return a == b
-        default: return false
-        }
-    }
 }
 
 protocol MultiplayerServiceProtocol: AnyObject, ObservableObject {
-    var discoveredPeers: [MCPeerID] { get }
+    var discoveredPeers: [DiscoveredPeer] { get }
     var connectionState: MPConnectionState { get }
     var role: PeerRole? { get }
     /// Async stream of decoded inbound messages. Consumers iterate with `for await msg in ...`.
@@ -359,262 +374,402 @@ protocol MultiplayerServiceProtocol: AnyObject, ObservableObject {
     func stopAdvertising()
     func startBrowsing()
     func stopBrowsing()
-    func invite(_ peer: MCPeerID)
+    func invite(_ peer: DiscoveredPeer)
     func respondToInvite(accept: Bool)
     func send(_ message: NetworkMessage, reliable: Bool)
     func disconnect()
 }
 ```
 
-- [ ] **Step 2: Build**
+Note: `reliable:` parameter is retained on `send` for API stability, but with our `Network.framework` TCP transport it's effectively always reliable. The flag may be used later if we add an unreliable UDP side-channel.
 
-Run: `xcodebuild ... build`
+- [ ] **Step 3: Build**
+
+Run: `xcodebuild -project "PongWatch/PongWatch.xcodeproj" -scheme "PongWatch Watch App" -destination "platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)" build`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add "PongWatch/PongWatch Watch App/Multiplayer/MultiplayerServiceProtocol.swift" \
-        PongWatch/PongWatch.xcodeproj/project.pbxproj
-git commit -m "feat(mp): add MultiplayerServiceProtocol + connection state"
+git add "PongWatch/PongWatch Watch App/Multiplayer/DiscoveredPeer.swift" \
+        "PongWatch/PongWatch Watch App/Multiplayer/MultiplayerServiceProtocol.swift"
+git commit -m "feat(mp): add DiscoveredPeer + MultiplayerServiceProtocol"
 ```
 
 ---
 
-## Task 5: Implement MultiplayerService (MC wrapper)
+## Task 5: Implement MultiplayerService (Network.framework + Bonjour)
 
-This task has no unit tests — `MCSession` can't be tested in XCTest in isolation. The service is tested indirectly through `MultiplayerGameStateTests` (with a fake). End-to-end verification happens in the integration test (Task 19).
+This task has no unit tests — `NWListener`/`NWBrowser`/`NWConnection` require the real networking stack. The service is tested indirectly through `MultiplayerGameStateTests` (via `FakeMultiplayerService` from Task 6). End-to-end verification happens in the integration tests (Task 21/22).
 
 **Files:**
+- Create: `PongWatch/PongWatch Watch App/Multiplayer/MessageFraming.swift`
 - Create: `PongWatch/PongWatch Watch App/Multiplayer/MultiplayerService.swift`
+- Modify: `PongWatch/PongWatch Watch App/Info.plist` (add NSBonjourServices + NSLocalNetworkUsageDescription)
 
-- [ ] **Step 1: Write the file**
+**Architecture notes:**
+- One `NWListener` advertises our Bonjour service and accepts incoming NWConnections.
+- One `NWBrowser` enumerates discovered peers.
+- Each active peer connection is one `NWConnection` (TCP).
+- Messages are length-prefixed (4-byte big-endian `UInt32` length + JSON payload).
+- On incoming connection (invitee side): we set `connectionState = .receivingInvite(...)`. Holding the NWConnection in a pending state. On Accept, we call `pendingConnection.start(queue:)` and set role `.client`. On Decline, we cancel.
+- On outgoing invite (inviter side): we create `NWConnection(to: endpoint, using: tcp)`, start it, and set role `.host` before the connection becomes ready. When ready, we send the first snapshot and the peer infers they're the client (no extra handshake needed since role is role-by-action: inviter=host).
+
+- [ ] **Step 1: Write `MessageFraming.swift`**
 
 ```swift
 import Foundation
-import MultipeerConnectivity
+
+/// Length-prefix framed message codec for TCP streams.
+/// Wire format per message: [u32 big-endian length][JSON bytes]
+enum MessageFraming {
+    static func encode(_ message: NetworkMessage) throws -> Data {
+        let payload = try JSONEncoder().encode(message)
+        var lenBE = UInt32(payload.count).bigEndian
+        var out = Data(bytes: &lenBE, count: 4)
+        out.append(payload)
+        return out
+    }
+
+    /// Parser that accumulates bytes and emits complete messages as they arrive.
+    final class Decoder {
+        private var buffer = Data()
+
+        /// Append newly-received bytes; returns any complete messages decoded from the buffer.
+        func feed(_ chunk: Data) -> [NetworkMessage] {
+            buffer.append(chunk)
+            var results: [NetworkMessage] = []
+            while true {
+                guard buffer.count >= 4 else { break }
+                let len = buffer[0..<4].withUnsafeBytes { rawBuf -> UInt32 in
+                    let ptr = rawBuf.bindMemory(to: UInt32.self)
+                    return UInt32(bigEndian: ptr[0])
+                }
+                guard buffer.count >= 4 + Int(len) else { break }
+                let payload = buffer.subdata(in: 4..<(4 + Int(len)))
+                buffer.removeSubrange(0..<(4 + Int(len)))
+                if let msg = try? JSONDecoder().decode(NetworkMessage.self, from: payload) {
+                    results.append(msg)
+                }
+                // If decode fails, we've already consumed the bytes — drop and continue.
+            }
+            return results
+        }
+    }
+}
+```
+
+- [ ] **Step 2: Write `MultiplayerService.swift`**
+
+```swift
+import Foundation
+import Network
 import WatchKit
 import Combine
 
-final class MultiplayerService: NSObject, MultiplayerServiceProtocol {
-    @Published private(set) var discoveredPeers: [MCPeerID] = []
+@MainActor
+final class MultiplayerService: MultiplayerServiceProtocol {
+    @Published private(set) var discoveredPeers: [DiscoveredPeer] = []
     @Published private(set) var connectionState: MPConnectionState = .idle
     @Published private(set) var role: PeerRole? = nil
 
-    private let localPeerID: MCPeerID
-    private let session: MCSession
-    private let advertiser: MCNearbyServiceAdvertiser
-    private let browser: MCNearbyServiceBrowser
-
-    private var inviteHandler: ((Bool, MCSession?) -> Void)?
-
-    private var messageContinuation: AsyncStream<NetworkMessage>.Continuation!
     let incomingMessages: AsyncStream<NetworkMessage>
+    private let messageContinuation: AsyncStream<NetworkMessage>.Continuation
 
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let displayName: String
+    private let bonjourType: String
+    private let queue = DispatchQueue(label: "mp.service.queue")
 
-    override init() {
-        let displayName = WKInterfaceDevice.current().name
-        // MCPeerID requires non-empty displayName.
-        let safeName = displayName.isEmpty ? "Apple Watch" : displayName
-        self.localPeerID = MCPeerID(displayName: safeName)
-        self.session = MCSession(peer: localPeerID, securityIdentity: nil, encryptionPreference: .required)
-        self.advertiser = MCNearbyServiceAdvertiser(peer: localPeerID,
-                                                    discoveryInfo: nil,
-                                                    serviceType: GameConstants.mcServiceType)
-        self.browser = MCNearbyServiceBrowser(peer: localPeerID, serviceType: GameConstants.mcServiceType)
+    private var listener: NWListener?
+    private var browser: NWBrowser?
+    private var activeConnection: NWConnection?
+    private var pendingIncoming: NWConnection?
+    private var decoder = MessageFraming.Decoder()
 
-        var continuation: AsyncStream<NetworkMessage>.Continuation!
-        self.incomingMessages = AsyncStream { continuation = $0 }
-        super.init()
-        self.messageContinuation = continuation
+    init() {
+        let name = WKInterfaceDevice.current().name
+        self.displayName = name.isEmpty ? "Apple Watch" : name
+        self.bonjourType = "_\(GameConstants.mcServiceType)._tcp"
 
-        session.delegate = self
-        advertiser.delegate = self
-        browser.delegate = self
+        var cont: AsyncStream<NetworkMessage>.Continuation!
+        self.incomingMessages = AsyncStream { cont = $0 }
+        self.messageContinuation = cont
     }
 
+    // MARK: - Advertising
+
     func startAdvertising() {
-        advertiser.startAdvertisingPeer()
-        DispatchQueue.main.async { [weak self] in
-            self?.connectionState = .discovering
+        stopAdvertising()
+        let params = NWParameters.tcp
+        params.includePeerToPeer = true
+        let txt = NWTXTRecord(["name": displayName])
+        do {
+            let l = try NWListener(using: params)
+            l.service = NWListener.Service(name: nil, type: bonjourType, domain: nil, txtRecord: txt.data)
+            l.newConnectionHandler = { [weak self] connection in
+                Task { @MainActor in
+                    self?.handleIncomingConnection(connection)
+                }
+            }
+            l.start(queue: queue)
+            self.listener = l
+            self.connectionState = .discovering
+        } catch {
+            self.connectionState = .failed("listener: \(error.localizedDescription)")
         }
     }
 
     func stopAdvertising() {
-        advertiser.stopAdvertisingPeer()
+        listener?.cancel()
+        listener = nil
     }
 
+    // MARK: - Browsing
+
     func startBrowsing() {
-        browser.startBrowsingForPeers()
+        stopBrowsing()
+        let params = NWParameters.tcp
+        params.includePeerToPeer = true
+        let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: bonjourType, domain: nil)
+        let b = NWBrowser(for: descriptor, using: params)
+        b.browseResultsChangedHandler = { [weak self] results, _ in
+            Task { @MainActor in
+                self?.updateDiscoveredPeers(from: results)
+            }
+        }
+        b.start(queue: queue)
+        self.browser = b
     }
 
     func stopBrowsing() {
-        browser.stopBrowsingForPeers()
+        browser?.cancel()
+        browser = nil
     }
 
-    func invite(_ peer: MCPeerID) {
-        DispatchQueue.main.async { [weak self] in
-            self?.connectionState = .inviting(peer)
+    private func updateDiscoveredPeers(from results: Set<NWBrowser.Result>) {
+        var peers: [DiscoveredPeer] = []
+        for result in results {
+            if case .bonjour(let txt) = result.metadata {
+                let name = txt["name"] ?? displayFallback(for: result.endpoint)
+                if name == self.displayName { continue }   // don't list ourselves
+                let id = endpointID(result.endpoint)
+                peers.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint))
+            } else {
+                let name = displayFallback(for: result.endpoint)
+                if name == self.displayName { continue }
+                let id = endpointID(result.endpoint)
+                peers.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint))
+            }
         }
-        browser.invitePeer(peer, to: session, withContext: nil, timeout: 15)
+        self.discoveredPeers = peers
+    }
+
+    private func endpointID(_ endpoint: NWEndpoint) -> String {
+        if case .service(let name, let type, let domain, _) = endpoint {
+            return "\(name).\(type).\(domain)"
+        }
+        return "\(endpoint)"
+    }
+
+    private func displayFallback(for endpoint: NWEndpoint) -> String {
+        if case .service(let name, _, _, _) = endpoint { return name }
+        return "Apple Watch"
+    }
+
+    // MARK: - Invite (outgoing)
+
+    func invite(_ peer: DiscoveredPeer) {
+        disconnectActive()
+        self.role = .host
+        self.connectionState = .inviting(peer)
+
+        let params = NWParameters.tcp
+        params.includePeerToPeer = true
+        let c = NWConnection(to: peer.endpoint, using: params)
+        c.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                self?.handleOutgoingState(state, for: peer, connection: c)
+            }
+        }
+        c.start(queue: queue)
+        self.activeConnection = c
+        receiveLoop(on: c)
+    }
+
+    private func handleOutgoingState(_ state: NWConnection.State, for peer: DiscoveredPeer, connection: NWConnection) {
+        switch state {
+        case .ready:
+            self.connectionState = .connected(peer: peer, role: .host)
+        case .failed(let err):
+            self.connectionState = .failed(err.localizedDescription)
+            self.role = nil
+        case .cancelled:
+            if case .connected = self.connectionState {
+                self.connectionState = .disconnected
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - Invite (incoming)
+
+    private var pendingPeer: DiscoveredPeer?
+
+    private func handleIncomingConnection(_ connection: NWConnection) {
+        // If we already have an active or pending connection, reject this one.
+        guard activeConnection == nil, pendingIncoming == nil else {
+            connection.cancel()
+            return
+        }
+        let peerName = displayFallback(for: connection.endpoint)
+        self.pendingIncoming = connection
+        self.connectionState = .receivingInvite(fromDisplayName: peerName)
     }
 
     func respondToInvite(accept: Bool) {
-        inviteHandler?(accept, accept ? session : nil)
-        inviteHandler = nil
+        guard let connection = pendingIncoming else { return }
+        self.pendingIncoming = nil
+        if accept {
+            self.role = .client
+            connection.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor in
+                    self?.handleIncomingState(state, connection: connection)
+                }
+            }
+            connection.start(queue: queue)
+            self.activeConnection = connection
+            receiveLoop(on: connection)
+        } else {
+            connection.cancel()
+            self.connectionState = .discovering
+        }
     }
+
+    private func handleIncomingState(_ state: NWConnection.State, connection: NWConnection) {
+        switch state {
+        case .ready:
+            let peerName = displayFallback(for: connection.endpoint)
+            let id = endpointID(connection.endpoint)
+            let peer = DiscoveredPeer(id: id, displayName: peerName, endpoint: connection.endpoint)
+            self.connectionState = .connected(peer: peer, role: .client)
+        case .failed(let err):
+            self.connectionState = .failed(err.localizedDescription)
+            self.role = nil
+        case .cancelled:
+            if case .connected = self.connectionState {
+                self.connectionState = .disconnected
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - Receive loop + framing
+
+    private func receiveLoop(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let data, !data.isEmpty {
+                    let messages = self.decoder.feed(data)
+                    for msg in messages {
+                        self.messageContinuation.yield(msg)
+                    }
+                }
+                if error != nil || isComplete {
+                    self.disconnectActive()
+                    return
+                }
+                // Continue loop.
+                self.receiveLoop(on: connection)
+            }
+        }
+    }
+
+    // MARK: - Send
 
     func send(_ message: NetworkMessage, reliable: Bool) {
-        guard !session.connectedPeers.isEmpty else { return }
+        guard let connection = activeConnection, connection.state == .ready else { return }
         do {
-            let data = try encoder.encode(message)
-            try session.send(data, toPeers: session.connectedPeers,
-                             with: reliable ? .reliable : .unreliable)
+            let framed = try MessageFraming.encode(message)
+            connection.send(content: framed, completion: .contentProcessed { _ in })
         } catch {
-            // Unreliable sends can drop silently; log and continue.
-            print("MP send failed: \(error.localizedDescription)")
+            // Encode failure is not recoverable for this message; drop silently.
         }
     }
+
+    // MARK: - Disconnect
 
     func disconnect() {
-        session.disconnect()
+        disconnectActive()
         stopAdvertising()
         stopBrowsing()
-        DispatchQueue.main.async { [weak self] in
-            self?.connectionState = .idle
-            self?.role = nil
-            self?.discoveredPeers = []
-        }
-    }
-}
-
-extension MultiplayerService: MCSessionDelegate {
-    func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            switch state {
-            case .connected:
-                // Role was set at invite/accept time; re-affirm state.
-                if let r = self.role {
-                    self.connectionState = .connected(peerID, role: r)
-                }
-            case .notConnected:
-                self.connectionState = .disconnected
-                self.role = nil
-            case .connecting:
-                break
-            @unknown default:
-                break
-            }
-        }
+        self.connectionState = .idle
+        self.role = nil
+        self.discoveredPeers = []
     }
 
-    func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
-        guard let message = try? decoder.decode(NetworkMessage.self, from: data) else { return }
-        messageContinuation?.yield(message)
-    }
-
-    func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
-    func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, with progress: Progress) {}
-    func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID, at localURL: URL?, withError error: Error?) {}
-}
-
-extension MultiplayerService: MCNearbyServiceAdvertiserDelegate {
-    func advertiser(_ advertiser: MCNearbyServiceAdvertiser,
-                    didReceiveInvitationFromPeer peerID: MCPeerID,
-                    withContext context: Data?,
-                    invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        // We're being invited → we become the CLIENT.
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.inviteHandler = invitationHandler
-            self.role = .client
-            self.connectionState = .receivingInvite(peerID, handler: { [weak self] accept in
-                self?.respondToInvite(accept: accept)
-            })
-        }
-    }
-}
-
-extension MultiplayerService: MCNearbyServiceBrowserDelegate {
-    func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if !self.discoveredPeers.contains(peerID) {
-                self.discoveredPeers.append(peerID)
-            }
-        }
-    }
-
-    func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
-        DispatchQueue.main.async { [weak self] in
-            self?.discoveredPeers.removeAll { $0 == peerID }
-        }
-    }
-}
-
-// Initiator becomes host: override `invite` to set role before calling browser.
-extension MultiplayerService {
-    func setRoleForInviter() {
-        DispatchQueue.main.async { [weak self] in
-            self?.role = .host
-        }
+    private func disconnectActive() {
+        activeConnection?.cancel()
+        activeConnection = nil
+        pendingIncoming?.cancel()
+        pendingIncoming = nil
+        decoder = MessageFraming.Decoder()
     }
 }
 ```
 
-**Important:** the `invite` method must also set the role. Update it:
+- [ ] **Step 3: Build**
 
-Replace the body of `func invite(_ peer: MCPeerID)` above with:
-```swift
-    func invite(_ peer: MCPeerID) {
-        DispatchQueue.main.async { [weak self] in
-            self?.role = .host
-            self?.connectionState = .inviting(peer)
-        }
-        browser.invitePeer(peer, to: session, withContext: nil, timeout: 15)
-    }
-```
-(and delete the `setRoleForInviter()` extension — it's redundant.)
-
-- [ ] **Step 2: Build**
-
-Run: `xcodebuild ... build`
+Run: `xcodebuild -project "PongWatch/PongWatch.xcodeproj" -scheme "PongWatch Watch App" -destination "platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)" build`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 3: Add Info.plist Bonjour + local-network entries**
+- [ ] **Step 4: Add Info.plist Bonjour + local-network entries**
 
-MultipeerConnectivity on watchOS/iOS requires `NSBonjourServices` and `NSLocalNetworkUsageDescription` in the watch app's Info.plist to allow peer discovery.
+The watch app's Info.plist must declare Bonjour service types and local-network usage. This project may use the modern Xcode 15+ pattern where Info.plist is generated from build settings.
 
-Open `PongWatch/PongWatch Watch App/Info.plist` (in Xcode or directly). Add:
+Check whether `PongWatch/PongWatch Watch App/Info.plist` exists as a file:
+```bash
+ls "PongWatch/PongWatch Watch App/Info.plist" 2>/dev/null && echo "FILE EXISTS" || echo "NO FILE — use build settings"
+```
 
+**If the file exists**, add these keys directly:
 ```xml
 <key>NSLocalNetworkUsageDescription</key>
 <string>Pong uses the local network to find nearby Apple Watches to play against.</string>
 <key>NSBonjourServices</key>
 <array>
     <string>_pongwatch._tcp</string>
-    <string>_pongwatch._udp</string>
 </array>
 ```
 
-If Info.plist doesn't exist yet (Xcode 13+ uses build settings by default), add these as custom Info.plist keys in the "PongWatch Watch App" target → Info tab.
+**If no Info.plist file**, open `PongWatch/PongWatch.xcodeproj/project.pbxproj` and look for `INFOPLIST_KEY_` build settings on the "PongWatch Watch App" target. Add:
+```
+INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";
+INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp";
+```
 
-- [ ] **Step 4: Build again to verify plist changes don't break anything**
+(For multi-value arrays like NSBonjourServices, xcodebuild accepts a single service type as a string. If multiple types are needed later, switch to `INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp _pongwatch._udp";` — space-separated.)
+
+**If you're unsure how to add these**, report back with NEEDS_CONTEXT — I'll add them via direct edit.
+
+- [ ] **Step 5: Build again**
 
 Run: `xcodebuild ... build`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add "PongWatch/PongWatch Watch App/Multiplayer/MultiplayerService.swift" \
+git add "PongWatch/PongWatch Watch App/Multiplayer/MessageFraming.swift" \
+        "PongWatch/PongWatch Watch App/Multiplayer/MultiplayerService.swift" \
         "PongWatch/PongWatch Watch App/Info.plist" \
         PongWatch/PongWatch.xcodeproj/project.pbxproj
-git commit -m "feat(mp): implement MultiplayerService wrapping MultipeerConnectivity"
+git commit -m "feat(mp): implement MultiplayerService over Network.framework + Bonjour"
 ```
+
+(If Info.plist doesn't exist, drop that path from the `git add`.)
 
 ---
 
@@ -627,12 +782,12 @@ git commit -m "feat(mp): implement MultiplayerService wrapping MultipeerConnecti
 
 ```swift
 import Foundation
-import MultipeerConnectivity
+import Network
 import Combine
 @testable import PongWatch_Watch_App
 
 final class FakeMultiplayerService: MultiplayerServiceProtocol {
-    @Published var discoveredPeers: [MCPeerID] = []
+    @Published var discoveredPeers: [DiscoveredPeer] = []
     @Published var connectionState: MPConnectionState = .idle
     @Published var role: PeerRole? = nil
 
@@ -652,7 +807,7 @@ final class FakeMultiplayerService: MultiplayerServiceProtocol {
     func stopAdvertising() {}
     func startBrowsing() {}
     func stopBrowsing() {}
-    func invite(_ peer: MCPeerID) { role = .host }
+    func invite(_ peer: DiscoveredPeer) { role = .host }
     func respondToInvite(accept: Bool) { if accept { role = .client } }
 
     func send(_ message: NetworkMessage, reliable: Bool) {
@@ -672,9 +827,16 @@ final class FakeMultiplayerService: MultiplayerServiceProtocol {
     }
 
     /// Simulate becoming connected in a specific role.
-    func simulateConnected(as role: PeerRole, peer: MCPeerID = MCPeerID(displayName: "Peer")) {
+    func simulateConnected(
+        as role: PeerRole,
+        peer: DiscoveredPeer = DiscoveredPeer(
+            id: "test-peer",
+            displayName: "Test Peer",
+            endpoint: .service(name: "test", type: "_pongwatch._tcp", domain: "local.", interface: nil)
+        )
+    ) {
         self.role = role
-        self.connectionState = .connected(peer, role: role)
+        self.connectionState = .connected(peer: peer, role: role)
     }
 
     /// Simulate the peer disconnecting.
@@ -710,7 +872,7 @@ git commit -m "test(mp): add FakeMultiplayerService test double"
 
 ```swift
 import XCTest
-import MultipeerConnectivity
+import Network
 @testable import PongWatch_Watch_App
 
 final class MultiplayerGameStateTests: XCTestCase {
@@ -754,7 +916,7 @@ Expected: compile error `cannot find 'MultiplayerGameState'`.
 import Foundation
 import CoreGraphics
 import Combine
-import MultipeerConnectivity
+import Network
 
 enum MultiplayerMatchPhase: Equatable {
     case pairing
@@ -2086,7 +2248,6 @@ git commit -m "feat(mp): StartView shows Single Player / Multiplayer buttons"
 
 ```swift
 import SwiftUI
-import MultipeerConnectivity
 
 struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
     @ObservedObject var service: Service
@@ -2154,7 +2315,6 @@ struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
 
 ```swift
 import SwiftUI
-import MultipeerConnectivity
 
 struct InvitePromptView: View {
     let peerName: String
@@ -2451,11 +2611,11 @@ struct ContentView: View {
     private var multiplayerRoot: some View {
         switch mpState.matchPhase {
         case .pairing:
-            if case .receivingInvite(let peer, let handler) = mpService.connectionState {
+            if case .receivingInvite(let name) = mpService.connectionState {
                 InvitePromptView(
-                    peerName: peer.displayName,
-                    onAccept: { handler(true) },
-                    onDecline: { handler(false); mode = nil }
+                    peerName: name,
+                    onAccept: { mpService.respondToInvite(accept: true) },
+                    onDecline: { mpService.respondToInvite(accept: false); mode = nil }
                 )
             } else {
                 NearbyPlayersView(service: mpService, onBack: {
