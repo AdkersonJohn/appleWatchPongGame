@@ -1,9 +1,29 @@
 # Apple Watch Multiplayer — Design
 
-**Status:** Approved
+**Status:** Approved (with Addendum A)
 **Date:** 2026-04-23
 **Project:** PongWatch (watchOS)
 **Branch:** `addMultiplayer`
+
+---
+
+## Addendum A — Transport pivot (2026-04-23)
+
+During Task 4 of implementation we discovered **`MultipeerConnectivity` is not available on watchOS** (verified against `WatchSimulator26.4.sdk` — the framework is absent). All references to MC, `MCSession`, `MCPeerID`, `MCNearbyServiceBrowser`, `MCNearbyServiceAdvertiser` etc. below should be read as intent, not literal APIs.
+
+**Replacement transport:** Apple's `Network.framework` + Bonjour, which *is* available on watchOS and is what MC uses under the hood.
+
+- Peer discovery: `NWBrowser(for: .bonjour(type: "_pongwatch._tcp", domain: nil))`
+- Peer advertisement: `NWListener` bound to the same service type with TXT record carrying the watch's display name
+- Transport per peer: one `NWConnection` with length-prefixed framing (4-byte big-endian u32 + JSON payload)
+- Reliability mode: TCP (all messages reliable). The 30Hz snapshot rate + message size is low enough that TCP head-of-line blocking is a non-issue on AWDL; we can revisit unreliable (UDP) later if measurements show otherwise.
+- Invite handshake: a `hello` message sent on a freshly opened connection carries the inviter's role assertion. Receiver's NWListener accepts the connection (show prompt → connection.start on Accept, connection.cancel on Decline).
+
+**Semantic equivalence:** Every gameplay-level decision (Q1–Q16) is unchanged. Only the plumbing changes. `MultiplayerServiceProtocol` stays as the stable seam; `MultiplayerGameState` and all UI code don't know or care about the transport.
+
+**Identity:** Watch display name comes from `WKInterfaceDevice.current().name`, embedded in the NWListener's Bonjour TXT record as `name=<value>`. Peers read the TXT record to populate the nearby list.
+
+---
 
 ## Summary
 

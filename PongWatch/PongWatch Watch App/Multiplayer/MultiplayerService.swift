@@ -147,6 +147,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         for peer: DiscoveredPeer,
         connection: NWConnection
     ) {
+        NSLog("[MP] handleOutgoingState(\(state))")
         switch state {
         case .ready:
             self.connectionState = .connected(peer: peer, role: .host)
@@ -165,6 +166,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Invite (incoming)
 
     private func handleIncomingConnection(_ connection: NWConnection) {
+        NSLog("[MP] handleIncomingConnection activeConn=\(activeConnection != nil) pending=\(pendingIncoming != nil)")
         guard activeConnection == nil, pendingIncoming == nil else {
             connection.cancel()
             return
@@ -175,6 +177,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     }
 
     func respondToInvite(accept: Bool) {
+        NSLog("[MP] respondToInvite(accept:\(accept)) pendingIncoming=\(pendingIncoming != nil)")
         guard let connection = pendingIncoming else { return }
         self.pendingIncoming = nil
         if accept {
@@ -194,6 +197,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     }
 
     private func handleIncomingState(_ state: NWConnection.State, connection: NWConnection) {
+        NSLog("[MP] handleIncomingState(\(state))")
         switch state {
         case .ready:
             let peerName = displayFallback(for: connection.endpoint)

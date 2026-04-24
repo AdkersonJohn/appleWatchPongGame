@@ -57,6 +57,7 @@ final class MultiplayerGameState: ObservableObject {
     private func handleServiceStateChange() {
         let priorRole = self.role
         let newRole = service.role
+        NSLog("[MP] handleServiceStateChange connState=\(service.connectionState) priorRole=\(String(describing: priorRole)) newRole=\(String(describing: newRole)) matchPhase=\(matchPhase)")
         switch service.connectionState {
         case .connected:
             self.role = newRole
@@ -230,6 +231,7 @@ final class MultiplayerGameState: ObservableObject {
             if let last = lastPeerActivityAt,
                Date().timeIntervalSince(last) > peerSilenceTimeout,
                let myRole = service.role {
+                NSLog("[MP] WATCHDOG FIRING matchPhase=\(matchPhase) since=\(Date().timeIntervalSince(last))s role=\(myRole)")
                 matchPhase = .matchOver(winner: myRole)
                 service.disconnect()
                 return
