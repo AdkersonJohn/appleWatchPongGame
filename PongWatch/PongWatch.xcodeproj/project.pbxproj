@@ -457,7 +457,7 @@
 				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PongWatch;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pong With Friends";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";
@@ -492,7 +492,7 @@
 				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PongWatch;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pong With Friends";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";
