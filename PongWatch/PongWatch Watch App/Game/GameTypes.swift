@@ -5,7 +5,7 @@ struct Ball: Equatable {
     var velocity: CGVector
 }
 
-enum GamePhase: Equatable {
+enum GamePhase: Equatable, Codable {
     case start
     case playing
     case gameOver
