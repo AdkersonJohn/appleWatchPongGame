@@ -460,7 +460,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Pong With Friends";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong With Friends finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network.";
 				INFOPLIST_KEY_WKWatchOnly = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -495,7 +495,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Pong With Friends";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_NSBonjourServices = "_pongwatch._tcp";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong With Friends finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network.";
 				INFOPLIST_KEY_WKWatchOnly = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
