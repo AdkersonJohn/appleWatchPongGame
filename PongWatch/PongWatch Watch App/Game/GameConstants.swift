@@ -38,4 +38,29 @@ enum GameConstants {
         (1.00, 0.271, 0.000),   // red-orange #FF4500
         (1.00, 0.918, 0.000)    // yellow   #FFEA00
     ]
+
+    // MARK: - Multiplayer
+
+    /// Match ends when a player reaches this score.
+    static let multiplayerWinningScore: Int = 5
+
+    /// Host → client snapshot rate (Hz).
+    static let snapshotHz: Double = 30
+
+    /// Client → host paddle-input rate (Hz).
+    static let paddleInputHz: Double = 30
+
+    /// Seconds of wrist-down grace before forfeiting a multiplayer match.
+    static let multiplayerGraceSeconds: Double = 3.0
+
+    /// If no message arrives from the peer for this long, assume the peer is
+    /// gone and end the match locally. Longer than `multiplayerGraceSeconds`
+    /// so it doesn't false-fire during a legitimate wrist-down pause.
+    static let peerSilenceTimeoutSeconds: Double = 5.0
+
+    /// MultipeerConnectivity service type. 1–15 chars, lowercase ASCII + hyphens.
+    static let mcServiceType: String = "pongwatch"
+
+    /// Protocol version included in every MP message. Bump when the wire format changes.
+    static let multiplayerProtocolVersion: UInt8 = 1
 }

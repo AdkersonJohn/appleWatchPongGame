@@ -51,6 +51,14 @@ final class GameState: ObservableObject {
         startCountdown()
     }
 
+    /// Public entry point used by multiplayer to start a fresh serve.
+    /// Resets ball to center and starts the 3-2-1 countdown without touching score.
+    func prepareNextServe() {
+        ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+        countdownRemaining = GameConstants.countdownStart
+        countdownElapsed = 0
+    }
+
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
         let half = GameConstants.paddleWidth / 2
         playerPaddleX = max(half, min(1 - half, value))
@@ -248,4 +256,15 @@ final class GameState: ObservableObject {
         let dy = cos(angle) * speed * (Bool.random() ? 1 : -1)
         return CGVector(dx: dx, dy: dy)
     }
+
+    /// Plays the paddle-hit haptic. Exposed so multiplayer can trigger it when
+    /// the inbound snapshot reports the local paddle hit the ball on the host.
+    func playPaddleHitHaptic() {
+        hapticPlayer.playClick()
+    }
+
+    #if DEBUG
+    /// Test-only accessor to the injected haptic player (for assertions).
+    var injectedHapticPlayerForTests: HapticPlayer { hapticPlayer }
+    #endif
 }
