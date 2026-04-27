@@ -469,6 +469,94 @@ final class MultiplayerGameStateTests: XCTestCase {
         // Still well inside the 500ms window — match must continue.
         XCTAssertEqual(state.matchPhase, .playing)
     }
+
+    func test_hostReceivingClientReadyTransitionsToConfiguringMatch() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .waitingForOpponentAccept)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .configuringMatch)
+    }
+
+    func test_hostStartMatchSendsAndPlaysWithStoredWinningScore() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await MainActor.run { state.startMatch(winningScore: 3) }
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertEqual(state.matchPhase, .playing)
+        XCTAssertEqual(state.winningScore, 3)
+        let starts: [Int?] = fake.sentMessages.compactMap {
+            if case .startMatch(let s) = $0.message { return s } else { return nil }
+        }
+        XCTAssertEqual(starts.count, 1)
+        XCTAssertEqual(starts[0], 3)
+        XCTAssertEqual(state.game.phase, .playing)
+    }
+
+    func test_clientReceivingStartMatchTransitionsToPlayingWithWinningScore() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .configuringMatch)
+        fake.simulateIncoming(.startMatch(winningScore: 7))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .playing)
+        XCTAssertEqual(state.winningScore, 7)
+    }
+
+    func test_clientReceivingStartMatchWithNilWinningScoreEntersNoLimitMode() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.startMatch(winningScore: nil))
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .playing)
+        XCTAssertNil(state.winningScore)
+    }
+
+    func test_cancelMatchConfigurationFromConfiguringDisconnectsAndReturnsToPairing() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .configuringMatch)
+        await MainActor.run { state.cancelMatchConfiguration() }
+        XCTAssertEqual(state.matchPhase, .pairing)
+        XCTAssertEqual(fake.connectionState, .idle)
+    }
+
+    func test_cancelMatchConfigurationFromWaitingForOpponentAcceptDisconnectsAndReturnsToPairing() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .waitingForOpponentAccept)
+        await MainActor.run { state.cancelMatchConfiguration() }
+        XCTAssertEqual(state.matchPhase, .pairing)
+        XCTAssertEqual(fake.connectionState, .idle)
+    }
+
+    func test_disconnectDuringConfiguringMatchReturnsToPairingNotMatchOver() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .configuringMatch)
+        fake.simulateDisconnect()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(state.matchPhase, .pairing)
+    }
 }
 
 // MARK: - Test helpers
