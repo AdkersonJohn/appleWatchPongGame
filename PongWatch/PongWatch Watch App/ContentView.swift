@@ -49,6 +49,9 @@ struct ContentView: View {
                         isNewHighScore: singlePlayerState.lastRunWasRecord,
                         onRestart: {
                             singlePlayerState.startGame()
+                        },
+                        onMainMenu: {
+                            mode = nil
                         }
                     )
                 }
