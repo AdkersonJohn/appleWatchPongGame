@@ -85,21 +85,26 @@ final class MultiplayerGameState: ObservableObject {
             }
         case .disconnected:
             let winnerRole = priorRole ?? newRole
-            self.role = nil
             // If a previous handler already resolved the match (e.g. to
             // .matchOver on a mid-match drop), don't clobber it.
             if case .matchOver = matchPhase { return }
             if matchPhase == .waitingForOpponentAccept || matchPhase == .configuringMatch {
                 // Either side bailed before play started — return to pairing,
                 // not "you win". User can re-invite if they want.
+                self.role = nil
                 matchPhase = .pairing
             } else if matchPhase == .playing || matchPhase == .pausedByOpponent {
                 if let winner = winnerRole {
+                    // Keep self.role set so MultiplayerGameOverView's
+                    // `didWin: winner == mpState.role` evaluates correctly.
+                    // role is cleared later when the user taps Back / leaveMatch.
                     matchPhase = .matchOver(winner: winner)
                 } else {
+                    self.role = nil
                     matchPhase = .disconnected
                 }
             } else {
+                self.role = nil
                 matchPhase = .disconnected
             }
         default:
@@ -139,6 +144,7 @@ final class MultiplayerGameState: ObservableObject {
             // Client receives this after host taps a score on MatchConfigView.
             if matchPhase == .configuringMatch {
                 winningScore = target
+                resetMatchProgress()
                 matchPhase = .playing
             }
         case .clientReady:
@@ -156,10 +162,25 @@ final class MultiplayerGameState: ObservableObject {
         guard service.role == .host, matchPhase == .configuringMatch else { return }
         winningScore = target
         service.send(.startMatch(winningScore: target), reliable: true)
-        // Re-arm baseline so the watchdog doesn't fire because the user
-        // lingered on the picker for longer than the silence timeout.
-        lastPeerActivityAt = nil
+        resetMatchProgress()
         matchPhase = .playing
+    }
+
+    /// Reset score, sequence counters, watchdog baseline, and inner game state
+    /// to the start-of-match defaults. Shared by the initial host startMatch,
+    /// the client's `.startMatch` handler, and the rematch flow so that any
+    /// "begin a fresh match" entry point starts clean — without this, a second
+    /// match after a disconnect+reconnect would carry over the previous score.
+    private func resetMatchProgress() {
+        hostScore = 0
+        clientScore = 0
+        tickSeq = 0
+        lastReceivedTickSeq = 0
+        lastPaddleInputSeq = 0
+        localPaddleInputSeq = 0
+        // Re-arm the watchdog baseline — it'll arm on the first real peer
+        // message in handle(_:).
+        lastPeerActivityAt = nil
         game.prepareNextServe()
         game.phase = .playing
     }
@@ -235,17 +256,7 @@ final class MultiplayerGameState: ObservableObject {
     }
 
     private func startFreshMatch() {
-        hostScore = 0
-        clientScore = 0
-        tickSeq = 0
-        lastReceivedTickSeq = 0
-        lastPaddleInputSeq = 0
-        localPaddleInputSeq = 0
-        // Reset peer-silence baseline — could be stale if the user lingered
-        // on the gameOver screen. Watchdog re-arms on the first message.
-        lastPeerActivityAt = nil
-        game.prepareNextServe()
-        game.phase = .playing
+        resetMatchProgress()
         matchPhase = .playing
     }
 

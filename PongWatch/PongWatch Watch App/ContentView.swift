@@ -125,6 +125,7 @@ struct ContentView: View {
                 didWin: winner == mpState.role,
                 myScore: myScore,
                 opponentScore: oppScore,
+                allowRematch: isPeerStillConnected,
                 onRematch: { mpState.requestRematch() },
                 onBack: {
                     mpState.leaveMatch()
@@ -137,6 +138,7 @@ struct ContentView: View {
                 didWin: true,  // peer dropped → we win by default
                 myScore: myScore,
                 opponentScore: oppScore,
+                allowRematch: false,
                 onRematch: {
                     mpState.leaveMatch()
                     mode = nil
@@ -147,6 +149,13 @@ struct ContentView: View {
                 }
             )
         }
+    }
+
+    /// True when the peer's connection is still alive — disables Rematch
+    /// otherwise so we can't try to start a fresh match without a peer.
+    private var isPeerStillConnected: Bool {
+        if case .connected = mpService.connectionState { return true }
+        return false
     }
 
     private var myScore: Int {
