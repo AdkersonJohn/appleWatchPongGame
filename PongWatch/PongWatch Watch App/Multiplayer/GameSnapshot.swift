@@ -11,6 +11,12 @@ enum NetworkMessage: Codable, Equatable {
     case paused(role: PeerRole)
     case resumed(role: PeerRole)
     case forfeit(by: PeerRole)
+    /// Host → client after the host picks a target score. nil = no win condition.
+    case startMatch(winningScore: Int?)
+    /// Client → host immediately after the client taps Accept. The host stays
+    /// on its waiting view until this arrives so the score picker can't open
+    /// while the invite is still pending.
+    case clientReady
 }
 
 /// Full game state snapshot from host → client at 30Hz.

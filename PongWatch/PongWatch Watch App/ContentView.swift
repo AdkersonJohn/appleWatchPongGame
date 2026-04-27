@@ -79,6 +79,19 @@ struct ContentView: View {
                 })
             }
 
+        case .waitingForOpponentAccept:
+            WaitingForAcceptView(onCancel: { mpState.cancelMatchConfiguration() })
+
+        case .configuringMatch:
+            if mpState.role == .host {
+                MatchConfigView(
+                    onPick: { target in mpState.startMatch(winningScore: target) },
+                    onBack: { mpState.cancelMatchConfiguration() }
+                )
+            } else {
+                WaitingForHostView()
+            }
+
         case .playing, .pausedByOpponent:
             GameView(
                 state: mpState.game,

@@ -5,6 +5,11 @@ import Network
 
 enum MultiplayerMatchPhase: Equatable {
     case pairing
+    /// Host-only: invite sent, TCP connected, but the client hasn't tapped
+    /// Accept yet. Score picker is suppressed until `.clientReady` arrives.
+    case waitingForOpponentAccept
+    /// Both peers connected; host is choosing target score, client is waiting.
+    case configuringMatch
     case playing
     case pausedByOpponent
     case matchOver(winner: PeerRole)
@@ -29,6 +34,10 @@ final class MultiplayerGameState: ObservableObject {
     private var localPaddleInputSeq: UInt32 = 0
     private var lastPeerActivityAt: Date?
     private var peerSilenceTimeout: Double = GameConstants.peerSilenceTimeoutSeconds
+
+    /// Score required to win, agreed on the configuration screen. nil means
+    /// no win condition (match only ends on disconnect/leave/forfeit).
+    private(set) var winningScore: Int? = nil
 
     init(service: any MultiplayerServiceProtocol,
          game: GameState = GameState()) {
@@ -62,8 +71,18 @@ final class MultiplayerGameState: ObservableObject {
         case .connected:
             self.role = newRole
             if matchPhase == .pairing {
-                matchPhase = .playing
-                lastPeerActivityAt = Date()
+                // Watchdog stays disarmed until the first real peer message.
+                lastPeerActivityAt = nil
+                if newRole == .host {
+                    // Host's TCP completed but the client may not have tapped
+                    // Accept yet. Hold on the waiting view until .clientReady.
+                    matchPhase = .waitingForOpponentAccept
+                } else {
+                    // Client just accepted — connection is live both ways.
+                    // Tell the host so they can open the score picker.
+                    matchPhase = .configuringMatch
+                    service.send(.clientReady, reliable: true)
+                }
             }
         case .disconnected:
             let winnerRole = priorRole ?? newRole
@@ -71,7 +90,11 @@ final class MultiplayerGameState: ObservableObject {
             // If a previous handler already resolved the match (e.g. to
             // .matchOver on a mid-match drop), don't clobber it.
             if case .matchOver = matchPhase { return }
-            if matchPhase == .playing || matchPhase == .pausedByOpponent {
+            if matchPhase == .waitingForOpponentAccept || matchPhase == .configuringMatch {
+                // Either side bailed before play started — return to pairing,
+                // not "you win". User can re-invite if they want.
+                matchPhase = .pairing
+            } else if matchPhase == .playing || matchPhase == .pausedByOpponent {
                 if let winner = winnerRole {
                     matchPhase = .matchOver(winner: winner)
                 } else {
@@ -113,7 +136,41 @@ final class MultiplayerGameState: ObservableObject {
         case .forfeit(let by):
             let winner: PeerRole = (by == .host) ? .client : .host
             matchPhase = .matchOver(winner: winner)
+        case .startMatch(let target):
+            // Client receives this after host taps a score on MatchConfigView.
+            if matchPhase == .configuringMatch {
+                winningScore = target
+                matchPhase = .playing
+            }
+        case .clientReady:
+            // Host receives this after the client taps Accept. Now safe to
+            // show the score picker.
+            if matchPhase == .waitingForOpponentAccept {
+                matchPhase = .configuringMatch
+            }
         }
+    }
+
+    /// Host-only: called when the user taps a target score on MatchConfigView.
+    /// Stores the choice, broadcasts it to the client, and starts the match.
+    func startMatch(winningScore target: Int?) {
+        guard service.role == .host, matchPhase == .configuringMatch else { return }
+        winningScore = target
+        service.send(.startMatch(winningScore: target), reliable: true)
+        // Re-arm baseline so the watchdog doesn't fire because the user
+        // lingered on the picker for longer than the silence timeout.
+        lastPeerActivityAt = nil
+        matchPhase = .playing
+        game.prepareNextServe()
+        game.phase = .playing
+    }
+
+    /// Host-only: called from the Back button on either pre-match waiting
+    /// view. Drops the connection so both watches return to pairing.
+    func cancelMatchConfiguration() {
+        guard matchPhase == .configuringMatch || matchPhase == .waitingForOpponentAccept else { return }
+        service.disconnect()
+        matchPhase = .pairing
     }
 
     // MARK: - Client snapshot apply
@@ -150,10 +207,11 @@ final class MultiplayerGameState: ObservableObject {
         // winning threshold and then stops sending snapshots. Without this
         // check the client would stay in .playing forever, frozen on the
         // final snapshot. Derive match end from the scores we just applied.
-        if case .playing = matchPhase {
-            if hostScore >= GameConstants.multiplayerWinningScore {
+        // Skip when winningScore is nil (no-limit mode).
+        if case .playing = matchPhase, let target = winningScore {
+            if hostScore >= target {
                 matchPhase = .matchOver(winner: .host)
-            } else if clientScore >= GameConstants.multiplayerWinningScore {
+            } else if clientScore >= target {
                 matchPhase = .matchOver(winner: .client)
             }
         }
@@ -184,6 +242,9 @@ final class MultiplayerGameState: ObservableObject {
         lastReceivedTickSeq = 0
         lastPaddleInputSeq = 0
         localPaddleInputSeq = 0
+        // Reset peer-silence baseline — could be stale if the user lingered
+        // on the gameOver screen. Watchdog re-arms on the first message.
+        lastPeerActivityAt = nil
         game.prepareNextServe()
         game.phase = .playing
         matchPhase = .playing
@@ -272,11 +333,13 @@ final class MultiplayerGameState: ObservableObject {
             game.prepareNextServe()
         }
 
-        // Check match-over.
-        if hostScore >= GameConstants.multiplayerWinningScore {
-            finishMatch(winner: .host)
-        } else if clientScore >= GameConstants.multiplayerWinningScore {
-            finishMatch(winner: .client)
+        // Check match-over (skip when winningScore is nil → no-limit mode).
+        if let target = winningScore {
+            if hostScore >= target {
+                finishMatch(winner: .host)
+            } else if clientScore >= target {
+                finishMatch(winner: .client)
+            }
         }
 
         broadcastSnapshot(
