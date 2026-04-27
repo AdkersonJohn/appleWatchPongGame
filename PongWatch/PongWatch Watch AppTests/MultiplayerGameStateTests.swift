@@ -12,22 +12,26 @@ final class MultiplayerGameStateTests: XCTestCase {
         XCTAssertNil(state.role)
     }
 
-    func test_onConnectAsHostTransitionsToPlaying() async {
+    func test_onConnectAsHostTransitionsToWaitingForOpponentAccept() async {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(state.role, .host)
-        XCTAssertEqual(state.matchPhase, .playing)
+        XCTAssertEqual(state.matchPhase, .waitingForOpponentAccept)
     }
 
-    func test_onConnectAsClientTransitionsToPlaying() async {
+    func test_onConnectAsClientTransitionsToConfiguringMatchAndSendsClientReady() async {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(state.role, .client)
-        XCTAssertEqual(state.matchPhase, .playing)
+        XCTAssertEqual(state.matchPhase, .configuringMatch)
+        let clientReadySends = fake.sentMessages.filter {
+            if case .clientReady = $0.message { return true } else { return false }
+        }
+        XCTAssertEqual(clientReadySends.count, 1)
     }
 
     func test_hostTickSendsSnapshot() {
@@ -286,12 +290,15 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
-        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await MainActor.run { state.startMatch(winningScore: 5) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         state.onScenePhaseChanged(to: .inactive)
         try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
         state.onScenePhaseChanged(to: .active)
         try? await Task.sleep(nanoseconds: 100_000_000)
-        // Match still playing.
         if case .playing = state.matchPhase {} else { XCTFail("Expected .playing, got \(state.matchPhase)") }
     }
 
@@ -299,8 +306,11 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
-        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
-        // Use a tiny grace for the test.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await MainActor.run { state.startMatch(winningScore: 5) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         state.setGraceSecondsForTests(0.05)
         state.onScenePhaseChanged(to: .inactive)
         try? await Task.sleep(nanoseconds: 200_000_000)  // 0.2s exceeds 0.05s grace
@@ -315,7 +325,11 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
-        try? await Task.sleep(nanoseconds: 100_000_000)  // let matchPhase settle to .playing
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await MainActor.run { state.startMatch(winningScore: 5) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         state.onScenePhaseChanged(to: .inactive)
         try? await Task.sleep(nanoseconds: 50_000_000)
         let pausedSends = fake.sentMessages.filter {
@@ -365,6 +379,10 @@ final class MultiplayerGameStateTests: XCTestCase {
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .host)
         try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await MainActor.run { state.startMatch(winningScore: 5) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         fake.simulateDisconnect()
         try? await Task.sleep(nanoseconds: 50_000_000)
         if case .matchOver(let winner) = state.matchPhase {
@@ -378,6 +396,8 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 50_000_000)
         let snap = GameSnapshot(
             protoVersion: 1, phase: .playing,
@@ -402,6 +422,8 @@ final class MultiplayerGameStateTests: XCTestCase {
         let state = MultiplayerGameState(service: fake)
         state.setPeerSilenceTimeoutForTests(0.05)
         fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 20_000_000)
         let snap = GameSnapshot(
             protoVersion: 1, phase: .playing,
@@ -429,6 +451,8 @@ final class MultiplayerGameStateTests: XCTestCase {
         let state = MultiplayerGameState(service: fake)
         state.setPeerSilenceTimeoutForTests(0.5)
         fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 20_000_000)
         let snap = GameSnapshot(
             protoVersion: 1, phase: .playing,
