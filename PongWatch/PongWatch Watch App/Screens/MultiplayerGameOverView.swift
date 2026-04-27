@@ -4,6 +4,9 @@ struct MultiplayerGameOverView: View {
     let didWin: Bool
     let myScore: Int
     let opponentScore: Int
+    /// When false, the Rematch button is hidden — used after the peer
+    /// disconnects, since you can't rematch a peer who isn't there.
+    let allowRematch: Bool
     let onRematch: () -> Void
     let onBack: () -> Void
 
@@ -19,18 +22,20 @@ struct MultiplayerGameOverView: View {
                     .font(.title2)
                     .foregroundColor(.white)
                 Spacer().frame(height: 4)
-                Button(action: onRematch) {
-                    Text("Rematch")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(8)
+                if allowRematch {
+                    Button(action: onRematch) {
+                        Text("Rematch")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Button(action: onBack) {
-                    Text("Back")
+                    Text("Main Menu")
                         .foregroundColor(.white.opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
@@ -44,6 +49,10 @@ struct MultiplayerGameOverView: View {
     }
 }
 
-#Preview {
-    MultiplayerGameOverView(didWin: true, myScore: 5, opponentScore: 3, onRematch: {}, onBack: {})
+#Preview("Win — rematch allowed") {
+    MultiplayerGameOverView(didWin: true, myScore: 5, opponentScore: 3, allowRematch: true, onRematch: {}, onBack: {})
+}
+
+#Preview("Win — peer dropped, no rematch") {
+    MultiplayerGameOverView(didWin: true, myScore: 3, opponentScore: 1, allowRematch: false, onRematch: {}, onBack: {})
 }

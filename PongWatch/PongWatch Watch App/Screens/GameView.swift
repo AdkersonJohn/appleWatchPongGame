@@ -14,13 +14,34 @@ struct GameView: View {
     var onCrownChange: ((CGFloat) -> Void)? = nil
 
     var body: some View {
-        GeometryReader { geo in
-            Canvas { context, size in
-                drawPlayfield(context: context, size: size)
+        ZStack {
+            GeometryReader { geo in
+                Canvas { context, size in
+                    drawPlayfield(context: context, size: size)
+                }
+                .background(Color.black)
             }
-            .background(Color.black)
+            .ignoresSafeArea()
+
+            // Score overlay — lives outside the ignoreSafeArea region so the
+            // watch's curved corner doesn't clip the digits.
+            VStack {
+                HStack {
+                    if let mp = multiplayerScores {
+                        Text("\(mp.mine) — \(mp.opp)")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                    } else {
+                        Text("\(state.score)")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                    }
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(.leading, 4)
         }
-        .ignoresSafeArea()
         .focusable()
         .digitalCrownRotation(
             $crownValue,
@@ -105,15 +126,8 @@ struct GameView: View {
             context.fill(Path(ellipseIn: ballRect), with: .color(.white))
         }
 
-        // Score
-        if let mp = multiplayerScores {
-            let mpText = Text("\(mp.mine) — \(mp.opp)")
-                .font(.caption2).foregroundColor(.white)
-            context.draw(mpText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
-        } else {
-            let scoreText = Text("\(state.score)").font(.caption2).foregroundColor(.white)
-            context.draw(scoreText, at: CGPoint(x: 8, y: 8), anchor: .topLeading)
-        }
+        // Score is now drawn as a SwiftUI overlay in `body` so the watch's
+        // curved corner doesn't clip the digits.
 
         // Scoring burst particles
         for p in state.particles {
