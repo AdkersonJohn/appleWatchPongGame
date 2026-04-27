@@ -39,6 +39,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Advertising
 
     func startAdvertising() {
+        // Don't restart while a connection is live or being received — would
+        // overwrite connectionState back to .discovering and tear down the link.
+        if activeConnection != nil || pendingIncoming != nil { return }
         stopAdvertising()
         let params = NWParameters.tcp
         params.includePeerToPeer = true
@@ -73,6 +76,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Browsing
 
     func startBrowsing() {
+        // Don't restart browsing once we have a connection — pointless and
+        // could re-fire result handlers in racy ways.
+        if activeConnection != nil || pendingIncoming != nil { return }
         stopBrowsing()
         let params = NWParameters.tcp
         params.includePeerToPeer = true
