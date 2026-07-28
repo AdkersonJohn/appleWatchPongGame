@@ -58,6 +58,9 @@ struct PowerUpSystem {
     /// Advance spawn timer, pickup drift, and interception. Call once per
     /// physics tick, only during live rally.
     mutating func tick(dt: CGFloat, bottomPaddleX: CGFloat, topPaddleX: CGFloat) -> PowerUpEvent? {
+        if bottom.wideRemaining > 0 { bottom.wideRemaining = max(0, bottom.wideRemaining - dt) }
+        if top.wideRemaining > 0 { top.wideRemaining = max(0, top.wideRemaining - dt) }
+
         guard var p = pickup else {
             timeUntilNextSpawn -= dt
             if timeUntilNextSpawn <= 0 { spawnPickup() }
@@ -73,11 +76,11 @@ struct PowerUpSystem {
                                               : GameConstants.paddleMarginY
         let halfH = GameConstants.paddleHeight / 2
         let r = GameConstants.powerUpPickupRadius
-        // Base width for now; Task 2 switches this to paddleWidth(for:).
-        let halfW = GameConstants.paddleWidth / 2
+        let halfW = paddleWidth(for: p.targetSide) / 2
         if abs(p.position.x - paddleX) <= halfW + r,
            abs(p.position.y - paddleY) <= halfH + r {
             let kind = p.kind, side = p.targetSide
+            grant(kind, to: side)
             resolvePickup()
             return .collected(kind: kind, by: side)
         }
@@ -89,6 +92,41 @@ struct PowerUpSystem {
         }
         return nil
     }
+
+    // MARK: - Queries
+
+    func effects(for side: PaddleSide) -> SidePowerUps { side == .bottom ? bottom : top }
+
+    func paddleWidth(for side: PaddleSide) -> CGFloat {
+        effects(for: side).isWide
+            ? GameConstants.paddleWidth * GameConstants.widePaddleFactor
+            : GameConstants.paddleWidth
+    }
+
+    func hasShield(for side: PaddleSide) -> Bool { effects(for: side).hasShield }
+    func stickyArmed(for side: PaddleSide) -> Bool { effects(for: side).stickyArmed }
+
+    // MARK: - Mutations
+
+    private mutating func modify(_ side: PaddleSide, _ body: (inout SidePowerUps) -> Void) {
+        if side == .bottom { body(&bottom) } else { body(&top) }
+    }
+
+    mutating func grant(_ kind: PowerUpKind, to side: PaddleSide) {
+        switch kind {
+        case .widePaddle: modify(side) { $0.wideRemaining = GameConstants.widePaddleDuration }
+        case .shield:     modify(side) { $0.hasShield = true }
+        case .stickyBall: modify(side) { $0.stickyArmed = true }
+        case .multiBall:  break   // ball splitting lives in GameState (Task 8)
+        }
+    }
+
+    mutating func consumeShield(for side: PaddleSide) { modify(side) { $0.hasShield = false } }
+    mutating func consumeSticky(for side: PaddleSide) { modify(side) { $0.stickyArmed = false } }
+
+    #if DEBUG
+    mutating func setPickupForTests(_ p: Pickup?) { pickup = p }
+    #endif
 
     /// Removes any on-screen pickup and re-arms the spawn timer. Called on serve resets.
     mutating func clearPickup() {

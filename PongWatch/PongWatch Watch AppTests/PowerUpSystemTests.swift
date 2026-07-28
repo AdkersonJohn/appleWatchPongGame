@@ -52,4 +52,74 @@ final class PowerUpSystemTests: XCTestCase {
         XCTAssertEqual(a.pickup?.kind, b.pickup?.kind)
         XCTAssertEqual(a.pickup?.driftSign, b.pickup?.driftSign)
     }
+
+    /// Puts a pickup directly above the bottom paddle line at x = 0.5.
+    private func plantPickup(_ kind: PowerUpKind, in sys: inout PowerUpSystem,
+                             towardBottom: Bool = true) {
+        let y: CGFloat = towardBottom ? 1.0 - GameConstants.paddleMarginY - 0.05
+                                      : GameConstants.paddleMarginY + 0.05
+        sys.setPickupForTests(Pickup(kind: kind,
+                                     position: CGPoint(x: 0.5, y: y),
+                                     driftSign: towardBottom ? 1 : -1))
+    }
+
+    func test_targetPaddleInterceptsAndGainsWidePaddle() {
+        var sys = PowerUpSystem(seed: 1)
+        plantPickup(.widePaddle, in: &sys)
+        var event: PowerUpEvent?
+        for _ in 0..<20 where event == nil {
+            event = sys.tick(dt: 0.05, bottomPaddleX: 0.5, topPaddleX: 0.05)
+        }
+        XCTAssertEqual(event, .collected(kind: .widePaddle, by: .bottom))
+        XCTAssertEqual(sys.paddleWidth(for: .bottom),
+                       GameConstants.paddleWidth * GameConstants.widePaddleFactor,
+                       accuracy: 0.0001)
+        XCTAssertEqual(sys.paddleWidth(for: .top), GameConstants.paddleWidth, accuracy: 0.0001)
+        XCTAssertNil(sys.pickup)
+    }
+
+    func test_nonTargetPaddleCannotIntercept() {
+        var sys = PowerUpSystem(seed: 1)
+        // Drifting toward TOP but positioned at the bottom paddle: no interception.
+        sys.setPickupForTests(Pickup(kind: .widePaddle,
+                                     position: CGPoint(x: 0.5, y: 1.0 - GameConstants.paddleMarginY),
+                                     driftSign: -1))
+        let event = sys.tick(dt: 0.02, bottomPaddleX: 0.5, topPaddleX: 0.05)
+        XCTAssertNil(event)
+    }
+
+    func test_wideExpiresAfterDuration() {
+        var sys = PowerUpSystem(seed: 1)
+        sys.grant(.widePaddle, to: .bottom)
+        tickThrough(&sys, seconds: GameConstants.widePaddleDuration + 0.2)
+        XCTAssertEqual(sys.paddleWidth(for: .bottom), GameConstants.paddleWidth, accuracy: 0.0001)
+    }
+
+    func test_wideRecatchRefreshesTimer() {
+        var sys = PowerUpSystem(seed: 1)
+        sys.grant(.widePaddle, to: .bottom)
+        tickThrough(&sys, seconds: 6)
+        sys.grant(.widePaddle, to: .bottom)
+        tickThrough(&sys, seconds: 6)
+        XCTAssertTrue(sys.effects(for: .bottom).isWide) // 6 < refreshed 10
+        tickThrough(&sys, seconds: 5)
+        XCTAssertFalse(sys.effects(for: .bottom).isWide)
+    }
+
+    func test_shieldGrantConsumeAndSecondCatchNoOps() {
+        var sys = PowerUpSystem(seed: 1)
+        sys.grant(.shield, to: .top)
+        XCTAssertTrue(sys.hasShield(for: .top))
+        sys.grant(.shield, to: .top)   // no-op, still exactly one shield
+        sys.consumeShield(for: .top)
+        XCTAssertFalse(sys.hasShield(for: .top))
+    }
+
+    func test_stickyArmAndConsume() {
+        var sys = PowerUpSystem(seed: 1)
+        sys.grant(.stickyBall, to: .bottom)
+        XCTAssertTrue(sys.stickyArmed(for: .bottom))
+        sys.consumeSticky(for: .bottom)
+        XCTAssertFalse(sys.stickyArmed(for: .bottom))
+    }
 }
