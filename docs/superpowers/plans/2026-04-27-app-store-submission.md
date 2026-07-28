@@ -1,8 +1,8 @@
-# Pong With Friends — App Store Submission Implementation Plan
+# Pong Pal Showdown — App Store Submission Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Take the working multiplayer Apple Watch Pong app from feature-complete on `main` to live in the Apple App Store as the paid $0.99 watchOS app "Pong With Friends," via a TestFlight external beta.
+**Goal:** Take the working multiplayer Apple Watch Pong app from feature-complete on `main` to live in the Apple App Store as the paid $0.99 watchOS app "Pong Pal Showdown," via a TestFlight external beta.
 
 **Architecture:** Four-phase rollout — code polish → App Store assets → TestFlight beta → submission. Code changes are minor (lower deployment target, strip debug logs, fix tests). Most of the effort is non-code: marketing copy, screenshot captures, GitHub Pages hosting, App Store Connect form-filling, beta coordination.
 
@@ -86,7 +86,7 @@ EOF
 
 ---
 
-## Task 2: Update CFBundleDisplayName to "Pong With Friends"
+## Task 2: Update CFBundleDisplayName to "Pong Pal Showdown"
 
 The on-watch display name (under the home screen icon) currently reads "PongWatch". Update for App Store consistency.
 
@@ -107,7 +107,7 @@ Expected: at least 2 lines reading `INFOPLIST_KEY_CFBundleDisplayName = PongWatc
 Use Edit tool. Note: the value must be quoted because of the spaces.
 
 - Old: `INFOPLIST_KEY_CFBundleDisplayName = PongWatch;` (occurs in watch app's Debug and Release configs around lines 460 and 495)
-- New: `INFOPLIST_KEY_CFBundleDisplayName = "Pong With Friends";`
+- New: `INFOPLIST_KEY_CFBundleDisplayName = "Pong Pal Showdown";`
 
 You'll need to do this surgically with two separate Edit calls (don't use `replace_all` — it would also hit the iOS target's display name). Use the surrounding context (e.g., a few preceding lines) to disambiguate.
 
@@ -118,13 +118,13 @@ Run:
 cd "/Volumes/bingobango/code/appleWatchPongGame/PongWatch" && xcodebuild -project PongWatch.xcodeproj -scheme "PongWatch Watch App" -configuration Debug -destination "platform=watchOS Simulator,id=91914947-67A1-4AFC-91FD-C242370CB9E6" -derivedDataPath ./build build 2>&1 | tail -3
 ```
 
-Expected: BUILD SUCCEEDED. Install + launch on a sim, then back out to the home screen and confirm the label under the icon now reads "Pong With Friends" (it may wrap across two lines on a 41mm watch — that's acceptable).
+Expected: BUILD SUCCEEDED. Install + launch on a sim, then back out to the home screen and confirm the label under the icon now reads "Pong Pal Showdown" (it may wrap across two lines on a 41mm watch — that's acceptable).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd "/Volumes/bingobango/code/appleWatchPongGame" && git add PongWatch/PongWatch.xcodeproj/project.pbxproj && git commit -m "$(cat <<'EOF'
-chore: rename watch app display name to "Pong With Friends"
+chore: rename watch app display name to "Pong Pal Showdown"
 
 Aligns the on-watch home-screen label with the App Store listing
 name. The iOS shell target's display name stays as PongWatch since
@@ -148,7 +148,7 @@ The current text reads `"Pong uses the local network to find nearby Apple Watche
 
 Use Edit tool with `replace_all: true`:
 - Old: `INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong uses the local network to find nearby Apple Watches to play against.";`
-- New: `INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong With Friends finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network.";`
+- New: `INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Pong Pal Showdown finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network.";`
 
 - [ ] **Step 2: Build to verify**
 
@@ -779,7 +779,7 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/index.html` with:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pong With Friends</title>
+  <title>Pong Pal Showdown</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 540px; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; background: #fafafa; line-height: 1.55; }
     h1 { font-size: 2rem; margin-bottom: 0.25rem; }
@@ -790,9 +790,9 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/index.html` with:
   </style>
 </head>
 <body>
-  <h1>Pong With Friends</h1>
+  <h1>Pong Pal Showdown</h1>
   <p class="subtitle">Play Pong head-to-head on two Apple Watches.</p>
-  <p>Pong With Friends is a watchOS game that lets you play classic Pong against another Apple Watch over local Wi-Fi. No ads, no in-app purchases, no data collection.</p>
+  <p>Pong Pal Showdown is a watchOS game that lets you play classic Pong against another Apple Watch over local Wi-Fi. No ads, no in-app purchases, no data collection.</p>
   <p>Available on the Apple Watch App Store for $0.99.</p>
   <div class="links">
     <a href="privacy.html">Privacy Policy</a>
@@ -811,7 +811,7 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/index.html` with:
 cd "/Volumes/bingobango/code/appleWatchPongGame" && git add docs/index.html && git commit -m "$(cat <<'EOF'
 docs(site): add GitHub Pages landing page
 
-Lightweight landing for pongwithfriends marketing URL. Links to
+Lightweight landing for pong-pal-showdown marketing URL. Links to
 privacy and support pages.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
@@ -838,7 +838,7 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/privacy.html` with:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Privacy Policy — Pong With Friends</title>
+  <title>Privacy Policy — Pong Pal Showdown</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 720px; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; background: #fafafa; line-height: 1.6; }
     h1 { font-size: 1.75rem; }
@@ -848,24 +848,24 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/privacy.html` with:
   </style>
 </head>
 <body>
-  <p><a href="index.html">&larr; Pong With Friends</a></p>
+  <p><a href="index.html">&larr; Pong Pal Showdown</a></p>
   <h1>Privacy Policy</h1>
   <p class="meta">Effective 2026-04-27</p>
 
-  <p><strong>Pong With Friends does not collect, store, or transmit any personal information.</strong> The short version: there is no server. There are no analytics SDKs. There is no tracking. The app runs entirely on your Apple Watch.</p>
+  <p><strong>Pong Pal Showdown does not collect, store, or transmit any personal information.</strong> The short version: there is no server. There are no analytics SDKs. There is no tracking. The app runs entirely on your Apple Watch.</p>
 
   <h2>What the app does on your device</h2>
-  <p>Pong With Friends stores your single-player high score on your Apple Watch using <code>UserDefaults</code> (the standard local-storage system on iOS and watchOS). This data never leaves your watch.</p>
+  <p>Pong Pal Showdown stores your single-player high score on your Apple Watch using <code>UserDefaults</code> (the standard local-storage system on iOS and watchOS). This data never leaves your watch.</p>
 
   <h2>Local Wi-Fi multiplayer</h2>
-  <p>The multiplayer feature uses Bonjour (also known as mDNS) to discover other Apple Watches running Pong With Friends on the same local Wi-Fi network. When you start a match, the two watches exchange paddle positions and game state directly with each other over the local network. <strong>This data does not travel over the internet, is not collected by us, and is not stored anywhere after the match ends.</strong></p>
+  <p>The multiplayer feature uses Bonjour (also known as mDNS) to discover other Apple Watches running Pong Pal Showdown on the same local Wi-Fi network. When you start a match, the two watches exchange paddle positions and game state directly with each other over the local network. <strong>This data does not travel over the internet, is not collected by us, and is not stored anywhere after the match ends.</strong></p>
   <p>The first time you use multiplayer, watchOS will ask for permission to access the local network. You can revoke this permission at any time in your Apple Watch's Settings &gt; Privacy &amp; Security &gt; Local Network.</p>
 
   <h2>Third-party SDKs</h2>
-  <p>None. Pong With Friends has no third-party analytics, advertising, crash-reporting, or tracking SDKs.</p>
+  <p>None. Pong Pal Showdown has no third-party analytics, advertising, crash-reporting, or tracking SDKs.</p>
 
   <h2>Children's privacy</h2>
-  <p>Pong With Friends is rated 4+ and contains no content directed at or restricted from children. Because we collect no information of any kind, the app complies with the U.S. Children's Online Privacy Protection Act (COPPA) by virtue of having no covered data collection at all.</p>
+  <p>Pong Pal Showdown is rated 4+ and contains no content directed at or restricted from children. Because we collect no information of any kind, the app complies with the U.S. Children's Online Privacy Protection Act (COPPA) by virtue of having no covered data collection at all.</p>
 
   <h2>Changes to this policy</h2>
   <p>If this policy changes — for example, if a future version adds an opt-in feature that involves data collection — we will update this page and note the effective date. Material changes will also be reflected in the App Store listing's privacy nutrition label.</p>
@@ -909,7 +909,7 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/support.html` with:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Support — Pong With Friends</title>
+  <title>Support — Pong Pal Showdown</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 720px; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; background: #fafafa; line-height: 1.6; }
     h1 { font-size: 1.75rem; }
@@ -918,15 +918,15 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/support.html` with:
   </style>
 </head>
 <body>
-  <p><a href="index.html">&larr; Pong With Friends</a></p>
+  <p><a href="index.html">&larr; Pong Pal Showdown</a></p>
   <h1>Support &amp; FAQ</h1>
 
-  <p>Pong With Friends is a small, single-developer hobby project. The fastest way to reach me is email — I read every message, but please be patient on response time.</p>
+  <p>Pong Pal Showdown is a small, single-developer hobby project. The fastest way to reach me is email — I read every message, but please be patient on response time.</p>
 
   <h2>How do I play multiplayer?</h2>
   <ol>
     <li>Make sure both Apple Watches are on the same Wi-Fi network and both running watchOS 10 or later.</li>
-    <li>On both watches, open Pong With Friends and tap <strong>Multiplayer</strong>.</li>
+    <li>On both watches, open Pong Pal Showdown and tap <strong>Multiplayer</strong>.</li>
     <li>Wait until each watch sees the other in the "Nearby Players" list.</li>
     <li>One player taps the other player's name to send an invite. The other player taps Accept.</li>
     <li>The inviting player picks a target score: First to 3, First to 5, or No limit.</li>
@@ -942,7 +942,7 @@ Create `/Volumes/bingobango/code/appleWatchPongGame/docs/support.html` with:
   </ul>
 
   <h2>Is there an iPhone version?</h2>
-  <p>No. Pong With Friends is a standalone Apple Watch app — there is no iPhone companion required, and no iPhone version available.</p>
+  <p>No. Pong Pal Showdown is a standalone Apple Watch app — there is no iPhone companion required, and no iPhone version available.</p>
 
   <h2>The Digital Crown isn't moving my paddle.</h2>
   <ul>
@@ -1131,13 +1131,13 @@ Save the listing copy to a file in the repo for reference and copy-paste into Ap
 Create `/Volumes/bingobango/code/appleWatchPongGame/docs/marketing-copy-draft.md` with:
 
 ````markdown
-# Pong With Friends — App Store Listing Copy
+# Pong Pal Showdown — App Store Listing Copy
 
 This file is the source of truth for the App Store Connect listing. Update here first, paste into App Store Connect.
 
 ## Name (max 30 chars)
 
-`Pong With Friends` (17 chars)
+`Pong Pal Showdown` (17 chars)
 
 ## Subtitle (max 30 chars)
 
@@ -1177,7 +1177,7 @@ REQUIREMENTS
 
 • Apple Watch running watchOS 10.0 or later
 • For multiplayer: two Apple Watches on the same Wi-Fi network
-• No iPhone required — Pong With Friends is a standalone watchOS app
+• No iPhone required — Pong Pal Showdown is a standalone watchOS app
 
 A small, single-developer game. Bring a friend.
 ```
@@ -1278,17 +1278,17 @@ Go to <https://appstoreconnect.apple.com>. Sign in with the Apple ID associated 
 Apps → My Apps → "+" button (top-left) → New App. Fill out:
 
 - **Platforms:** check `watchOS` only
-- **Name:** `Pong With Friends`
+- **Name:** `Pong Pal Showdown`
 - **Primary language:** English (U.S.)
 - **Bundle ID:** select from dropdown — `com.johnadkerson.PongWatch.watchkitapp` (must already be registered as an App ID in your developer account; if it's not in the dropdown, register it via the Certificates, Identifiers & Profiles portal first)
-- **SKU:** `pong-with-friends-1` (any unique-to-account identifier; this never appears to users)
+- **SKU:** `pong-pal-showdown-1` (any unique-to-account identifier; this never appears to users)
 - **User access:** Full Access
 
 Click Create.
 
 - [ ] **Step 3: Confirm the record exists**
 
-You should now see "Pong With Friends" in My Apps with a 1.0 Prepare for Submission status. Don't fill out any listing fields yet — those happen in Phase 4.
+You should now see "Pong Pal Showdown" in My Apps with a 1.0 Prepare for Submission status. Don't fill out any listing fields yet — those happen in Phase 4.
 
 ---
 
@@ -1322,7 +1322,7 @@ Wait for upload to complete (~2-5 minutes).
 
 - [ ] **Step 5: Wait for build processing**
 
-Apple needs ~15–30 minutes to process the upload. Refresh App Store Connect → My Apps → Pong With Friends → TestFlight tab → iOS Builds (which on watchOS apps shows watch builds). The build appears with status "Processing" → eventually becomes "Ready to Submit" or similar.
+Apple needs ~15–30 minutes to process the upload. Refresh App Store Connect → My Apps → Pong Pal Showdown → TestFlight tab → iOS Builds (which on watchOS apps shows watch builds). The build appears with status "Processing" → eventually becomes "Ready to Submit" or similar.
 
 If it lands in "Missing Compliance" status, click into the build and answer the export-compliance question:
 - "Does your app use encryption?" → **Yes** (HTTPS / Network framework counts as encryption)
@@ -1401,8 +1401,8 @@ Inside the Friends & Family group, click `Add Testers` → enter 5–10 email ad
 For each invitee, also send them a casual personal message (text/iMessage) saying:
 - You're testing a small Apple Watch game
 - Look for an email from Apple/TestFlight
-- Once installed, look for "Pong With Friends" on their watch and play around
-- Send feedback via TestFlight's screenshot+text feature (open TestFlight on the iPhone → Pong With Friends → "Send Beta Feedback")
+- Once installed, look for "Pong Pal Showdown" on their watch and play around
+- Send feedback via TestFlight's screenshot+text feature (open TestFlight on the iPhone → Pong Pal Showdown → "Send Beta Feedback")
 - It's a hobby project, no formal QA expected — just play it casually
 
 ---
@@ -1486,7 +1486,7 @@ If a blocker is found late: hold launch, fix, return to friends/family group for
 
 **Files:** none — copy-paste from `docs/marketing-copy-draft.md` into App Store Connect web UI.
 
-- [ ] **Step 1: Go to App Store Connect → My Apps → Pong With Friends → "1.0 Prepare for Submission"**
+- [ ] **Step 1: Go to App Store Connect → My Apps → Pong Pal Showdown → "1.0 Prepare for Submission"**
 
 - [ ] **Step 2: Fill out App Information section**
 
@@ -1535,7 +1535,7 @@ Pre-submit double-check.
 
 In App Store Connect, verify each piece is filled and correct:
 
-- App name = "Pong With Friends"
+- App name = "Pong Pal Showdown"
 - Subtitle = "Play Pong head-to-head"
 - Promotional text matches `docs/marketing-copy-draft.md`
 - Description matches `docs/marketing-copy-draft.md`
@@ -1589,7 +1589,7 @@ Apple emails you on every status change. If rejected, the email links to the rej
 
 - [ ] **Step 1a: If rejected on the "Pong" trademark**
 
-- Go to App Store Connect → Pong With Friends → 1.0 record → edit Name field
+- Go to App Store Connect → Pong Pal Showdown → 1.0 record → edit Name field
 - Pick a new name from the brainstorming alternates: e.g., "Bounce With Friends" or "Crown Rally" — whichever you prefer
 - Save, resubmit. Same build, no re-archive needed. Same-day cycle typically.
 
@@ -1606,7 +1606,7 @@ App goes live in the App Store automatically (per our automatic-release decision
 
 - [ ] **Step 2: Verify it's live**
 
-- Open App Store on an iPhone or Apple Watch, search "Pong With Friends"
+- Open App Store on an iPhone or Apple Watch, search "Pong Pal Showdown"
 - Confirm the listing shows: correct name, subtitle, screenshots, $0.99 price, "Get" button (not "Buy" — that's the iOS terminology; Apple Watch App Store uses "Get" + price)
 - Buy a copy with a real Apple ID (or use your sandbox test account)
 - Install on a real watch
@@ -1618,7 +1618,7 @@ Whatever channels you choose. The launch is hobby-tier so this is optional.
 
 - [ ] **Step 4: Update memory & internal docs**
 
-Add memories or update the project README to reflect "Pong With Friends" is live in the App Store with build 2 (or whichever build was the final approved one). Mark MP Tasks 21–23 as completed in the task tracker.
+Add memories or update the project README to reflect "Pong Pal Showdown" is live in the App Store with build 2 (or whichever build was the final approved one). Mark MP Tasks 21–23 as completed in the task tracker.
 
 ---
 
