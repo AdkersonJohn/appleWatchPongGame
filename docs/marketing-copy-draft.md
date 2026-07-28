@@ -1,10 +1,10 @@
-# Pong With Friends — App Store Listing Copy
+# Pong Pal Showdown — App Store Listing Copy
 
 This file is the source of truth for the App Store Connect listing. Update here first, paste into App Store Connect.
 
 ## Name (max 30 chars)
 
-`Pong With Friends` (17 chars)
+`Pong Pal Showdown` (17 chars)
 
 ## Subtitle (max 30 chars)
 
@@ -44,7 +44,7 @@ REQUIREMENTS
 
 • Apple Watch running watchOS 10.0 or later
 • For multiplayer: two Apple Watches on the same Wi-Fi network
-• No iPhone required — Pong With Friends is a standalone watchOS app
+• No iPhone required — Pong Pal Showdown is a standalone watchOS app
 
 A small, single-developer game. Bring a friend.
 ```
