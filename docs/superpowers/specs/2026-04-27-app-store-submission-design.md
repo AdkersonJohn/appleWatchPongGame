@@ -1,4 +1,4 @@
-# Pong With Friends — App Store Submission Design
+# Pong Pal Showdown — App Store Submission Design
 
 **Date:** 2026-04-27
 **Author:** John Adkerson (with Claude)
@@ -6,13 +6,13 @@
 
 ## Goal
 
-Take the working multiplayer Apple Watch Pong game (currently shipping as `PongWatch` on `main`) from "merged PR" to live in the Apple App Store as a paid $0.99 watchOS app under the name **"Pong With Friends"**, via a TestFlight beta period that catches real-world multiplayer bugs before strangers can leave bad reviews.
+Take the working multiplayer Apple Watch Pong game (currently shipping as `PongWatch` on `main`) from "merged PR" to live in the Apple App Store as a paid $0.99 watchOS app under the name **"Pong Pal Showdown"**, via a TestFlight beta period that catches real-world multiplayer bugs before strangers can leave bad reviews.
 
 ## Locked decisions
 
 | Decision | Value |
 |---|---|
-| App Store name | Pong With Friends |
+| App Store name | Pong Pal Showdown |
 | Subtitle (30 chars) | Play Pong head-to-head |
 | Bundle ID | `com.johnadkerson.PongWatch.watchkitapp` |
 | Deployment target | watchOS 10.0 |
@@ -46,7 +46,7 @@ Take the working multiplayer Apple Watch Pong game (currently shipping as `PongW
 
 ### 1.3 Info.plist local network keys
 - Add `NSLocalNetworkUsageDescription` to the watch app's Info.plist:
-  > "Pong With Friends finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network."
+  > "Pong Pal Showdown finds nearby Apple Watches over Wi-Fi to start a multiplayer match. No data leaves your local network."
 - Add `NSBonjourServices` array with single entry: `_pongwatch._tcp` (matches `GameConstants.mcServiceType`).
 - **Why critical:** without these keys, watchOS silently blocks `NWBrowser` from discovering peers on real devices. Sim is forgiving; production is not.
 
@@ -89,7 +89,7 @@ After the `.configuringMatch` / `.waitingForOpponentAccept` / `.clientReady` / `
 
 ### 2.1 Marketing copy
 
-**App name:** Pong With Friends
+**App name:** Pong Pal Showdown
 
 **Subtitle (30 char):** Play Pong head-to-head
 
@@ -168,10 +168,10 @@ Enable GitHub Pages in repo settings: source = `main` branch, folder = `/docs`.
 - Sign in to App Store Connect with the team that owns dev team `373QNLTN7Q`
 - Create new app record:
   - Platforms: watchOS
-  - Name: Pong With Friends
+  - Name: Pong Pal Showdown
   - Primary language: English (U.S.)
   - Bundle ID: `com.johnadkerson.PongWatch.watchkitapp`
-  - SKU: `pong-with-friends-1` (any unique-to-account identifier)
+  - SKU: `pong-pal-showdown-1` (any unique-to-account identifier)
   - User access: Full Access
 
 ### 3.1 First TestFlight upload (Day 0)
@@ -290,7 +290,7 @@ Fill in App Store Connect for v1.0:
 
 - Localization beyond English (US) — defer to v1.x if international interest emerges
 - Game Center integration / global leaderboards — defer
-- iPhone companion app — not building one; Pong With Friends is standalone watchOS only
+- iPhone companion app — not building one; Pong Pal Showdown is standalone watchOS only
 - Marketing-text screenshot overlays — defer to v1.1 if conversion is weak
 - Custom domain / branded website — defer; GitHub Pages is enough for v1.0
 - App Store preview videos — defer to v1.1; static screenshots are sufficient for launch
