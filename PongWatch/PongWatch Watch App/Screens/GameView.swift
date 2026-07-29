@@ -92,8 +92,8 @@ struct GameView: View {
     }
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
-        let bottomSticky = state.powerUps.stickyArmed(for: .bottom) || state.stuckBall?.side == .bottom
-        let topSticky = state.powerUps.stickyArmed(for: .top) || state.stuckBall?.side == .top
+        let bottomSticky = state.powerUps.stickyArmed(for: .bottom) || state.stuckBall?.side == .bottom || state.remoteStuckSide == .bottom
+        let topSticky = state.powerUps.stickyArmed(for: .top) || state.stuckBall?.side == .top || state.remoteStuckSide == .top
 
         // Player paddle (bottom)
         drawPaddle(context: context, size: size,

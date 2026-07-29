@@ -674,6 +674,41 @@ final class GameStateTests: XCTestCase {
         XCTAssertGreaterThan(state.ball.velocity.dy, 0, "top release goes downward")
     }
 
+    func test_secondStickyCatchReleasesFirstStuckBall() {
+        let state = GameState()
+        state.phase = .playing
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, 3)
+
+        // Neutralize balls 1 and 2 so they don't interfere with the first catch.
+        state.balls[1] = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+        state.balls[2] = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+
+        // Catch ball A (index 0) on the bottom paddle.
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let bottomPaddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.balls[0] = Ball(position: CGPoint(x: 0.55, y: bottomPaddleTopY - GameConstants.ballRadius - 0.001),
+                              velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertNotNil(state.stuckBall)
+        XCTAssertEqual(state.stuckBall?.side, .bottom)
+        XCTAssertEqual(state.stuckBall?.ballIndex, 0)
+
+        // Now catch ball B (index 1) on the top paddle while A is still held.
+        state.grantPowerUpForTests(.stickyBall, to: .top)
+        let topPaddleBottomY = GameConstants.paddleMarginY + GameConstants.paddleHeight / 2
+        state.balls[1] = Ball(position: CGPoint(x: 0.5, y: topPaddleBottomY + GameConstants.ballRadius + 0.001),
+                              velocity: CGVector(dx: 0, dy: -0.3))
+        state.update(dt: 0.05)
+
+        XCTAssertEqual(state.stuckBall?.side, .top, "second catch should hold the new ball")
+        XCTAssertEqual(state.stuckBall?.ballIndex, 1)
+        XCTAssertNotEqual(state.balls[0].velocity, CGVector.zero,
+                           "ball A must be released, not orphaned at zero velocity")
+        XCTAssertLessThan(state.balls[0].velocity.dy, 0,
+                           "ball A must be launched away from the bottom paddle")
+    }
+
     func test_defaultGameHasExactlyOneBall() {
         let state = GameState()
         XCTAssertEqual(state.balls.count, 1)

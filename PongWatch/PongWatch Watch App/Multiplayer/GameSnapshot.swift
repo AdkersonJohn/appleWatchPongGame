@@ -67,6 +67,8 @@ struct GameSnapshot: Codable, Equatable {
     var pickup: PickupState?
     /// Non-nil for exactly one snapshot after a pickup is collected.
     var pickupCollected: PeerRole?
+    /// Which side (if any) currently holds a stuck ball. nil when no ball is held.
+    var stuckSide: PeerRole?
     /// Monotonic tick sequence; receiver discards out-of-order snapshots.
     var tickSeq: UInt32
 }
