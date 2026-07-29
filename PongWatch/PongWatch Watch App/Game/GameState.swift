@@ -161,15 +161,27 @@ final class GameState: ObservableObject {
 
         // Ball exits top (AI missed) — player scores a point, start countdown.
         if ball.position.y < 0 {
-            score += 1
-            spawnScoreBurst(atX: ball.position.x)
-            startCountdown()
+            if powerUps.hasShield(for: .top) {
+                powerUps.consumeShield(for: .top)
+                ball.position.y = 0
+                ball.velocity.dy = abs(ball.velocity.dy)
+            } else {
+                score += 1
+                spawnScoreBurst(atX: ball.position.x)
+                startCountdown()
+            }
         }
 
-        // Ball exits bottom — game over
+        // Ball exits bottom — game over (unless shielded)
         if ball.position.y > 1.0 {
-            lastRunWasRecord = highScoreStore.updateIfHigher(newScore: score)
-            phase = .gameOver
+            if powerUps.hasShield(for: .bottom) {
+                powerUps.consumeShield(for: .bottom)
+                ball.position.y = 1.0
+                ball.velocity.dy = -abs(ball.velocity.dy)
+            } else {
+                lastRunWasRecord = highScoreStore.updateIfHigher(newScore: score)
+                phase = .gameOver
+            }
         }
     }
 

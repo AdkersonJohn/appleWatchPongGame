@@ -528,4 +528,37 @@ final class GameStateTests: XCTestCase {
         XCTAssertFalse(state.powerUps.hasShield(for: .bottom))
         XCTAssertNil(state.powerUps.pickup)
     }
+
+    func test_shieldSavesBottomExitAndIsConsumed() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .bottom)
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995),
+                          velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing, "shield should prevent game over")
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "ball should bounce back up")
+        XCTAssertFalse(state.powerUps.hasShield(for: .bottom), "shield is one-use")
+    }
+
+    func test_shieldSavesTopExitWithoutScoring() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .top)
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.005),
+                          velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 0, "shielded save is not a point")
+        XCTAssertGreaterThan(state.ball.velocity.dy, 0)
+        XCTAssertFalse(state.powerUps.hasShield(for: .top))
+    }
+
+    func test_bottomExitWithoutShieldStillEndsGame() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995),
+                          velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .gameOver)
+    }
 }
