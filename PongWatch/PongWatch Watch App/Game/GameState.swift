@@ -2,6 +2,13 @@ import Foundation
 import CoreGraphics
 import Combine
 
+struct StuckBall: Equatable {
+    var side: PaddleSide
+    /// Ball x-offset from paddle center, clamped to the paddle half-width.
+    var offset: CGFloat
+    var holdRemaining: CGFloat
+}
+
 final class GameState: ObservableObject {
     @Published var phase: GamePhase = .start
     @Published var ball: Ball
@@ -13,6 +20,9 @@ final class GameState: ObservableObject {
     @Published var countdownRemaining: Int?
     @Published var particles: [Particle] = []
     @Published private(set) var powerUps = PowerUpSystem()
+    @Published private(set) var stuckBall: StuckBall?
+    /// False in multiplayer, where the top paddle is the remote human.
+    var topSideIsAI: Bool = true
     /// Set for exactly one update() when a pickup was collected; consumed by MP snapshots.
     private(set) var pickupCollectedThisTick: PaddleSide?
 
@@ -48,6 +58,7 @@ final class GameState: ObservableObject {
         hitCount = 0
         powerUps.reset()
         pickupCollectedThisTick = nil
+        stuckBall = nil
     }
 
     func startGame() {
@@ -63,6 +74,7 @@ final class GameState: ObservableObject {
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
         powerUps.clearPickup()
+        stuckBall = nil
     }
 
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
@@ -84,6 +96,7 @@ final class GameState: ObservableObject {
         }
 
         tickPowerUps(dt: dt)
+        tickStuckBall(dt: dt)
 
         // Sub-step physics so a single fast-ball frame can't skip past a paddle.
         // Cap each sub-step's travel to half a paddle's thickness, which
@@ -125,14 +138,18 @@ final class GameState: ObservableObject {
            ball.position.y + GameConstants.ballRadius >= playerPaddleTop,
            ball.position.y + GameConstants.ballRadius <= playerPaddleY + GameConstants.paddleHeight / 2,
            abs(ball.position.x - playerPaddleX) <= playerHalfW {
-            bouncePaddleHit(paddleX: playerPaddleX)
-            hapticPlayer.playClick()
-            hitCount += 1
-            if hitCount % GameConstants.hitsPerSpeedTier == 0,
-               currentBallSpeed < GameConstants.maxBallSpeed {
-                let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
-                currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
-                rescaleBallSpeed(to: currentBallSpeed)
+            if powerUps.stickyArmed(for: .bottom) {
+                stickBall(to: .bottom)
+            } else {
+                bouncePaddleHit(paddleX: playerPaddleX)
+                hapticPlayer.playClick()
+                hitCount += 1
+                if hitCount % GameConstants.hitsPerSpeedTier == 0,
+                   currentBallSpeed < GameConstants.maxBallSpeed {
+                    let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                    currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
+                    rescaleBallSpeed(to: currentBallSpeed)
+                }
             }
         }
 
@@ -144,7 +161,11 @@ final class GameState: ObservableObject {
            ball.position.y - GameConstants.ballRadius <= aiPaddleBottom,
            ball.position.y - GameConstants.ballRadius >= aiPaddleY - GameConstants.paddleHeight / 2,
            abs(ball.position.x - aiPaddleX) <= aiHalfW {
-            bouncePaddleHit(paddleX: aiPaddleX)
+            if powerUps.stickyArmed(for: .top) {
+                stickBall(to: .top)
+            } else {
+                bouncePaddleHit(paddleX: aiPaddleX)
+            }
         }
 
         // AI paddle tracks the ball
@@ -209,6 +230,50 @@ final class GameState: ObservableObject {
         ball.velocity.dy *= scale
     }
 
+    private func stickBall(to side: PaddleSide) {
+        powerUps.consumeSticky(for: side)
+        let paddleX = side == .bottom ? playerPaddleX : aiPaddleX
+        let halfW = powerUps.paddleWidth(for: side) / 2
+        let offset = max(-halfW, min(halfW, ball.position.x - paddleX))
+        let hold = (side == .top && topSideIsAI)
+            ? GameConstants.aiStickyHoldSeconds
+            : GameConstants.stickyHoldSeconds
+        stuckBall = StuckBall(side: side, offset: offset, holdRemaining: hold)
+        ball.velocity = .zero
+    }
+
+    private func tickStuckBall(dt: CGFloat) {
+        guard var stuck = stuckBall else { return }
+        let paddleX = stuck.side == .bottom ? playerPaddleX : aiPaddleX
+        let halfW = powerUps.paddleWidth(for: stuck.side) / 2
+        stuck.offset = max(-halfW, min(halfW, stuck.offset))
+        let y = stuck.side == .bottom
+            ? 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2 - GameConstants.ballRadius
+            : GameConstants.paddleMarginY + GameConstants.paddleHeight / 2 + GameConstants.ballRadius
+        ball.position = CGPoint(x: paddleX + stuck.offset, y: y)
+        ball.velocity = .zero
+        stuck.holdRemaining -= dt
+        stuckBall = stuck
+        if stuck.holdRemaining <= 0 { releaseStuckBall() }
+    }
+
+    private func releaseStuckBall() {
+        guard let stuck = stuckBall else { return }
+        stuckBall = nil
+        let halfW = powerUps.paddleWidth(for: stuck.side) / 2
+        let clamped = max(-1, min(1, stuck.offset / halfW))
+        let speed = currentBallSpeed
+        let dx = clamped * speed * 0.7
+        let dyMag = sqrt(max(0, speed * speed - dx * dx))
+        ball.velocity = CGVector(dx: dx, dy: stuck.side == .bottom ? -dyMag : dyMag)
+    }
+
+    /// Tap-to-release entry point (GameView tap / MP stickyRelease message).
+    func tapRelease(side: PaddleSide) {
+        guard let stuck = stuckBall, stuck.side == side else { return }
+        releaseStuckBall()
+    }
+
     func spawnScoreBurst(atX x: CGFloat) {
         let origin = CGPoint(x: x, y: 0.0)
         var newParticles: [Particle] = []
@@ -256,6 +321,7 @@ final class GameState: ObservableObject {
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
         powerUps.clearPickup()
+        stuckBall = nil
     }
 
     private func tickCountdown(dt: CGFloat) {
