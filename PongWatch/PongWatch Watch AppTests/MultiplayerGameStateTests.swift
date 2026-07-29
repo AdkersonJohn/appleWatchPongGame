@@ -74,14 +74,9 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.3, ballY: 0.2, ballVX: 0, ballVY: 0.5,
-            hostPaddleX: 0.4, clientPaddleX: 0.6,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.3, y: 0.2, vx: 0, vy: 0.5)],
+            hostPaddleX: 0.4, clientPaddleX: 0.6
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -96,15 +91,9 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.4,
-            clientPaddleX: 0.6,
-            hostScore: 1, clientScore: 2,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+        let snap = makeSnapshot(
+            hostPaddleX: 0.4, clientPaddleX: 0.6,
+            hostScore: 1, clientScore: 2
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -117,22 +106,14 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
-        let newerSnap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.7, ballY: 0.3, ballVX: 0, ballVY: 0,
+        let newerSnap = makeSnapshot(
+            balls: [BallState(x: 0.7, y: 0.3, vx: 0, vy: 0)],
             hostPaddleX: 0, clientPaddleX: 0,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
             tickSeq: 10
         )
-        let olderSnap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.1, ballY: 0.9, ballVX: 0, ballVY: 0,
+        let olderSnap = makeSnapshot(
+            balls: [BallState(x: 0.1, y: 0.9, vx: 0, vy: 0)],
             hostPaddleX: 0, clientPaddleX: 0,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
             tickSeq: 5
         )
         fake.simulateIncoming(.snapshot(newerSnap))
@@ -191,15 +172,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         // Local crown input sets our predicted paddle.
         state.setLocalPaddle(normalizedCrown: 0.42)
         // Now a snapshot arrives with a stale clientPaddleX.
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.15,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
-        )
+        let snap = makeSnapshot(hostPaddleX: 0.5, clientPaddleX: 0.15)
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
         // Our local prediction wins.
@@ -232,15 +205,11 @@ final class MultiplayerGameStateTests: XCTestCase {
         game.phase = .playing
         let state = MultiplayerGameState(service: fake, game: game)
         fake.simulateConnected(as: .client)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.0, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.5, y: 0.0, vx: 0, vy: 0)],
             hostScore: 0, clientScore: 1,
             countdownRemaining: 3,
-            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .client),
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .client)
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -251,15 +220,11 @@ final class MultiplayerGameStateTests: XCTestCase {
         let fake = FakeMultiplayerService()
         let state = MultiplayerGameState(service: fake)
         fake.simulateConnected(as: .client)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.0, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.5, y: 0.0, vx: 0, vy: 0)],
             hostScore: 1, clientScore: 0,
             countdownRemaining: 3,
-            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .host),
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+            scoreEvent: ScoreEvent(impactX: 0.37, scoredBy: .host)
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -271,15 +236,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         let game = GameState(highScoreStore: HighScoreStore(), hapticPlayer: RecordingHapticPlayer())
         let state = MultiplayerGameState(service: fake, game: game)
         fake.simulateConnected(as: .client)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: true,
-            tickSeq: 1
-        )
+        let snap = makeSnapshot(clientPaddleHit: true)
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
         let haptic = game.injectedHapticPlayerForTests as! RecordingHapticPlayer
@@ -399,14 +356,8 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 50_000_000)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
-            hostScore: GameConstants.multiplayerWinningScore, clientScore: 3,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+        let snap = makeSnapshot(
+            hostScore: GameConstants.multiplayerWinningScore, clientScore: 3
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -425,15 +376,7 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 20_000_000)
         fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 20_000_000)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0.5,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
-        )
+        let snap = makeSnapshot(balls: [BallState(x: 0.5, y: 0.5, vx: 0, vy: 0.5)])
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 20_000_000)
         // Now wait well past the 50ms injected timeout — peer is "silent".
@@ -454,14 +397,9 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 20_000_000)
         fake.simulateIncoming(.startMatch(winningScore: 5))
         try? await Task.sleep(nanoseconds: 20_000_000)
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0.5,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
-            hostScore: 1, clientScore: 0,
-            countdownRemaining: nil, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 1
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.5, y: 0.5, vx: 0, vy: 0.5)],
+            hostScore: 1, clientScore: 0
         )
         fake.simulateIncoming(.snapshot(snap))
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -557,6 +495,27 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(state.matchPhase, .pairing)
     }
+
+    func test_clientAppliesBallsPickupAndEffectsYFlipped() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.3, y: 0.2, vx: 0.1, vy: 0.5)],
+            hostEffects: EffectsState(wideRemaining: 5, hasShield: true, stickyArmed: false),
+            clientEffects: EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: true),
+            pickup: PickupState(kind: .shield, x: 0.5, y: 0.3, driftSign: 1)
+        )
+        fake.simulateIncoming(.snapshot(snap))
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(state.game.balls[0].position.y, 0.8, accuracy: 0.0001)
+        XCTAssertEqual(state.game.balls[0].velocity.dy, -0.5, accuracy: 0.0001)
+        // Host effects render on the client's TOP side; client effects on BOTTOM.
+        XCTAssertTrue(state.game.powerUps.hasShield(for: .top))
+        XCTAssertTrue(state.game.powerUps.stickyArmed(for: .bottom))
+        XCTAssertEqual(state.game.powerUps.pickup?.position.y ?? -1, 0.7, accuracy: 0.0001)
+    }
 }
 
 // MARK: - Test helpers
@@ -566,4 +525,30 @@ final class RecordingHapticPlayer: HapticPlayer {
     var successCount = 0
     func playClick() { clickCount += 1 }
     func playSuccess() { successCount += 1 }
+}
+
+private func makeSnapshot(
+    phase: GamePhase = .playing,
+    balls: [BallState] = [BallState(x: 0.5, y: 0.5, vx: 0, vy: 0)],
+    hostPaddleX: CGFloat = 0.5,
+    clientPaddleX: CGFloat = 0.5,
+    hostScore: Int = 0,
+    clientScore: Int = 0,
+    countdownRemaining: Int? = nil,
+    scoreEvent: ScoreEvent? = nil,
+    hostPaddleHit: Bool = false,
+    clientPaddleHit: Bool = false,
+    hostEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
+    clientEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
+    pickup: PickupState? = nil,
+    pickupCollected: PeerRole? = nil,
+    tickSeq: UInt32 = 1
+) -> GameSnapshot {
+    GameSnapshot(protoVersion: GameConstants.multiplayerProtocolVersion, phase: phase,
+                 balls: balls, hostPaddleX: hostPaddleX, clientPaddleX: clientPaddleX,
+                 hostScore: hostScore, clientScore: clientScore,
+                 countdownRemaining: countdownRemaining, scoreEvent: scoreEvent,
+                 hostPaddleHit: hostPaddleHit, clientPaddleHit: clientPaddleHit,
+                 hostEffects: hostEffects, clientEffects: clientEffects,
+                 pickup: pickup, pickupCollected: pickupCollected, tickSeq: tickSeq)
 }
