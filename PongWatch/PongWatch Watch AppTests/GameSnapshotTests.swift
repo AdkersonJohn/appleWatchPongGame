@@ -87,6 +87,7 @@ private func makeSnapshot(
     clientEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
     pickup: PickupState? = nil,
     pickupCollected: PeerRole? = nil,
+    stuckSide: PeerRole? = nil,
     tickSeq: UInt32 = 1
 ) -> GameSnapshot {
     GameSnapshot(protoVersion: GameConstants.multiplayerProtocolVersion, phase: phase,
@@ -95,5 +96,5 @@ private func makeSnapshot(
                  countdownRemaining: countdownRemaining, scoreEvent: scoreEvent,
                  hostPaddleHit: hostPaddleHit, clientPaddleHit: clientPaddleHit,
                  hostEffects: hostEffects, clientEffects: clientEffects,
-                 pickup: pickup, pickupCollected: pickupCollected, tickSeq: tickSeq)
+                 pickup: pickup, pickupCollected: pickupCollected, stuckSide: stuckSide, tickSeq: tickSeq)
 }

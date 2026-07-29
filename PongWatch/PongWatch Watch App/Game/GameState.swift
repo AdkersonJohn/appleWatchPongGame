@@ -28,6 +28,10 @@ final class GameState: ObservableObject {
     @Published var particles: [Particle] = []
     @Published private(set) var powerUps = PowerUpSystem()
     @Published private(set) var stuckBall: StuckBall?
+    /// MP client only: which side (per the host's snapshot) currently holds a
+    /// stuck ball. stuckBall itself is host-only and index-based, so the
+    /// client can't reconstruct one — this just drives the green "holding" cue.
+    var remoteStuckSide: PaddleSide?
     /// False in multiplayer, where the top paddle is the remote human.
     var topSideIsAI: Bool = true
     /// Set for exactly one update() when a pickup was collected; consumed by MP snapshots.
@@ -71,6 +75,7 @@ final class GameState: ObservableObject {
         powerUps.reset()
         pickupCollectedThisTick = nil
         stuckBall = nil
+        remoteStuckSide = nil
     }
 
     func startGame() {
@@ -87,6 +92,7 @@ final class GameState: ObservableObject {
         countdownElapsed = 0
         powerUps.clearPickup()
         stuckBall = nil
+        remoteStuckSide = nil
     }
 
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
@@ -275,6 +281,12 @@ final class GameState: ObservableObject {
     }
 
     private func stickBall(at index: Int, to side: PaddleSide) {
+        // A different ball may already be held (multi-ball + both paddles
+        // sticky-armed). Release it first so it doesn't get orphaned at zero
+        // velocity forever when we overwrite the single-optional stuckBall.
+        if stuckBall != nil {
+            releaseStuckBall()
+        }
         powerUps.consumeSticky(for: side)
         let paddleX = side == .bottom ? playerPaddleX : aiPaddleX
         let halfW = powerUps.paddleWidth(for: side) / 2
@@ -365,6 +377,7 @@ final class GameState: ObservableObject {
         countdownElapsed = 0
         powerUps.clearPickup()
         stuckBall = nil
+        remoteStuckSide = nil
     }
 
     private func tickCountdown(dt: CGFloat) {
@@ -439,6 +452,7 @@ final class GameState: ObservableObject {
     func resetPowerUps() {
         powerUps.reset()
         stuckBall = nil
+        remoteStuckSide = nil
     }
 
     #if DEBUG

@@ -576,6 +576,22 @@ final class MultiplayerGameStateTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(haptics.successCount, 1)
     }
+
+    func test_clientAppliesRemoteStuckSideFromSnapshot() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        fake.simulateIncoming(.snapshot(makeSnapshot(stuckSide: .client, tickSeq: 1)))
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(game.remoteStuckSide, .bottom, "client's own hold maps to the bottom paddle")
+
+        fake.simulateIncoming(.snapshot(makeSnapshot(stuckSide: nil, tickSeq: 2)))
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertNil(game.remoteStuckSide, "release must clear the cue")
+    }
 }
 
 // MARK: - Test helpers
@@ -602,6 +618,7 @@ private func makeSnapshot(
     clientEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
     pickup: PickupState? = nil,
     pickupCollected: PeerRole? = nil,
+    stuckSide: PeerRole? = nil,
     tickSeq: UInt32 = 1
 ) -> GameSnapshot {
     GameSnapshot(protoVersion: GameConstants.multiplayerProtocolVersion, phase: phase,
@@ -610,5 +627,5 @@ private func makeSnapshot(
                  countdownRemaining: countdownRemaining, scoreEvent: scoreEvent,
                  hostPaddleHit: hostPaddleHit, clientPaddleHit: clientPaddleHit,
                  hostEffects: hostEffects, clientEffects: clientEffects,
-                 pickup: pickup, pickupCollected: pickupCollected, tickSeq: tickSeq)
+                 pickup: pickup, pickupCollected: pickupCollected, stuckSide: stuckSide, tickSeq: tickSeq)
 }

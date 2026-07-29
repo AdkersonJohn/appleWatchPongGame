@@ -236,6 +236,12 @@ final class MultiplayerGameState: ObservableObject {
         )
         // DO NOT overwrite game.playerPaddleX — that's our locally predicted paddle.
         game.aiPaddleX = snap.hostPaddleX
+        // Client is BOTTOM, host is TOP from the client's perspective.
+        switch snap.stuckSide {
+        case .client: game.remoteStuckSide = .bottom
+        case .host: game.remoteStuckSide = .top
+        case nil: game.remoteStuckSide = nil
+        }
         game.score = snap.clientScore
         game.countdownRemaining = snap.countdownRemaining
         game.phase = snap.phase
@@ -443,6 +449,7 @@ final class MultiplayerGameState: ObservableObject {
                                 stickyArmed: e.stickyArmed)
         }
         let collectedRole: PeerRole? = game.pickupCollectedThisTick.map { $0 == .bottom ? .host : .client }
+        let stuckSide: PeerRole? = game.stuckBall.map { $0.side == .bottom ? .host : .client }
         let snap = GameSnapshot(
             protoVersion: GameConstants.multiplayerProtocolVersion,
             phase: game.phase,
@@ -461,6 +468,7 @@ final class MultiplayerGameState: ObservableObject {
             pickup: game.powerUps.pickup.map { PickupState(kind: $0.kind, x: $0.position.x,
                                                            y: $0.position.y, driftSign: $0.driftSign) },
             pickupCollected: collectedRole,
+            stuckSide: stuckSide,
             tickSeq: tickSeq
         )
         service.send(.snapshot(snap), reliable: false)
