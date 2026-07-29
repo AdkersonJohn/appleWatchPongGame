@@ -12,6 +12,9 @@ final class GameState: ObservableObject {
     // nil = no countdown, ball is in play. Otherwise the number (3, 2, 1) to show.
     @Published var countdownRemaining: Int?
     @Published var particles: [Particle] = []
+    @Published private(set) var powerUps = PowerUpSystem()
+    /// Set for exactly one update() when a pickup was collected; consumed by MP snapshots.
+    private(set) var pickupCollectedThisTick: PaddleSide?
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private var countdownElapsed: CGFloat = 0
@@ -43,6 +46,8 @@ final class GameState: ObservableObject {
         countdownElapsed = 0
         particles = []
         hitCount = 0
+        powerUps.reset()
+        pickupCollectedThisTick = nil
     }
 
     func startGame() {
@@ -57,15 +62,17 @@ final class GameState: ObservableObject {
         ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        powerUps.clearPickup()
     }
 
     func setPlayerPaddle(normalizedCrown value: CGFloat) {
-        let half = GameConstants.paddleWidth / 2
+        let half = powerUps.paddleWidth(for: .bottom) / 2
         playerPaddleX = max(half, min(1 - half, value))
     }
 
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
+        pickupCollectedThisTick = nil
 
         updateParticles(dt: dt)
 
@@ -75,6 +82,8 @@ final class GameState: ObservableObject {
             tickCountdown(dt: dt)
             return
         }
+
+        tickPowerUps(dt: dt)
 
         // Sub-step physics so a single fast-ball frame can't skip past a paddle.
         // Cap each sub-step's travel to half a paddle's thickness, which
@@ -109,12 +118,13 @@ final class GameState: ObservableObject {
         }
 
         // Player paddle (bottom)
+        let playerHalfW = powerUps.paddleWidth(for: .bottom) / 2
         let playerPaddleY = 1.0 - GameConstants.paddleMarginY
         let playerPaddleTop = playerPaddleY - GameConstants.paddleHeight / 2
         if ball.velocity.dy > 0,
            ball.position.y + GameConstants.ballRadius >= playerPaddleTop,
            ball.position.y + GameConstants.ballRadius <= playerPaddleY + GameConstants.paddleHeight / 2,
-           abs(ball.position.x - playerPaddleX) <= GameConstants.paddleWidth / 2 {
+           abs(ball.position.x - playerPaddleX) <= playerHalfW {
             bouncePaddleHit(paddleX: playerPaddleX)
             hapticPlayer.playClick()
             hitCount += 1
@@ -127,12 +137,13 @@ final class GameState: ObservableObject {
         }
 
         // AI paddle (top)
+        let aiHalfW = powerUps.paddleWidth(for: .top) / 2
         let aiPaddleY = GameConstants.paddleMarginY
         let aiPaddleBottom = aiPaddleY + GameConstants.paddleHeight / 2
         if ball.velocity.dy < 0,
            ball.position.y - GameConstants.ballRadius <= aiPaddleBottom,
            ball.position.y - GameConstants.ballRadius >= aiPaddleY - GameConstants.paddleHeight / 2,
-           abs(ball.position.x - aiPaddleX) <= GameConstants.paddleWidth / 2 {
+           abs(ball.position.x - aiPaddleX) <= aiHalfW {
             bouncePaddleHit(paddleX: aiPaddleX)
         }
 
@@ -145,7 +156,7 @@ final class GameState: ObservableObject {
         } else {
             step = aiDelta > 0 ? maxStep : -maxStep
         }
-        let half = GameConstants.paddleWidth / 2
+        let half = powerUps.paddleWidth(for: .top) / 2
         aiPaddleX = max(half, min(1 - half, aiPaddleX + step))
 
         // Ball exits top (AI missed) — player scores a point, start countdown.
@@ -232,6 +243,7 @@ final class GameState: ObservableObject {
         ball.velocity = .zero
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        powerUps.clearPickup()
     }
 
     private func tickCountdown(dt: CGFloat) {
@@ -246,6 +258,17 @@ final class GameState: ObservableObject {
         } else {
             countdownRemaining = nil
             ball.velocity = randomInitialVelocity(speed: currentBallSpeed)
+        }
+    }
+
+    private func tickPowerUps(dt: CGFloat) {
+        guard let event = powerUps.tick(dt: dt,
+                                        bottomPaddleX: playerPaddleX,
+                                        topPaddleX: aiPaddleX) else { return }
+        switch event {
+        case .collected(_, let side):
+            pickupCollectedThisTick = side
+            if side == .bottom { hapticPlayer.playSuccess() }
         }
     }
 
@@ -266,5 +289,11 @@ final class GameState: ObservableObject {
     #if DEBUG
     /// Test-only accessor to the injected haptic player (for assertions).
     var injectedHapticPlayerForTests: HapticPlayer { hapticPlayer }
+    func grantPowerUpForTests(_ kind: PowerUpKind, to side: PaddleSide) {
+        powerUps.grant(kind, to: side)
+    }
+    func setPickupForTests(_ p: Pickup?) {
+        powerUps.setPickupForTests(p)
+    }
     #endif
 }

@@ -3,7 +3,9 @@ import XCTest
 
 final class FakeHapticPlayer: HapticPlayer {
     var playedCount = 0
+    var successCount = 0
     func playClick() { playedCount += 1 }
+    func playSuccess() { successCount += 1 }
 }
 
 final class GameStateTests: XCTestCase {
@@ -473,5 +475,57 @@ final class GameStateTests: XCTestCase {
             XCTAssertEqual(p.position.x, impactX, accuracy: maxDisplacement)
             XCTAssertLessThanOrEqual(p.position.y, maxDisplacement)
         }
+    }
+
+    func test_powerUpTimersFrozenDuringCountdown() {
+        let state = GameState()
+        state.startGame()                       // countdown running
+        let before = state.powerUps.timeUntilNextSpawn
+        state.update(dt: 1.0)                   // still counting down
+        XCTAssertEqual(state.powerUps.timeUntilNextSpawn, before, accuracy: 0.0001)
+    }
+
+    func test_powerUpSpawnTimerRunsDuringLiveRally() {
+        let state = GameState()
+        state.startGame()
+        state.update(dt: CGFloat(GameConstants.countdownStart)) // finish countdown
+        let before = state.powerUps.timeUntilNextSpawn
+        state.update(dt: 0.05)
+        XCTAssertLessThan(state.powerUps.timeUntilNextSpawn, before)
+    }
+
+    func test_collectingPickupFiresSuccessHaptic() {
+        let haptics = FakeHapticPlayer()
+        let state = GameState(hapticPlayer: haptics)
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.1))
+        state.setPickupForTests(Pickup(kind: .widePaddle,
+                                       position: CGPoint(x: 0.5, y: 1.0 - GameConstants.paddleMarginY - 0.02),
+                                       driftSign: 1))
+        state.update(dt: 0.02)   // paddle default 0.5 → intercepts
+        XCTAssertEqual(haptics.successCount, 1)
+        XCTAssertEqual(state.pickupCollectedThisTick, .bottom)
+        XCTAssertTrue(state.powerUps.effects(for: .bottom).isWide)
+    }
+
+    func test_widePaddleWidensPlayerCollisionWindow() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.widePaddle, to: .bottom)
+        // x-offset 0.13: outside base half-width (0.10) but inside wide half (0.15).
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5 + 0.13, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "wide paddle should have bounced the ball")
+    }
+
+    func test_resetClearsPowerUps() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .bottom)
+        state.reset()
+        XCTAssertFalse(state.powerUps.hasShield(for: .bottom))
+        XCTAssertNil(state.powerUps.pickup)
     }
 }
