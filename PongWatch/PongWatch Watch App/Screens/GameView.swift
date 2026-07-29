@@ -149,6 +149,16 @@ struct GameView: View {
             )
             context.draw(symbol, in: rect.insetBy(dx: r * 0.45, dy: r * 0.45))
         }
+
+        // Shields — thin line just behind each protected paddle
+        if state.powerUps.hasShield(for: .bottom) {
+            let rect = CGRect(x: 0, y: size.height - 3, width: size.width, height: 3)
+            context.fill(Path(rect), with: .color(.blue))
+        }
+        if state.powerUps.hasShield(for: .top) {
+            let rect = CGRect(x: 0, y: 0, width: size.width, height: 3)
+            context.fill(Path(rect), with: .color(.blue))
+        }
     }
 
     private func drawPaddle(context: GraphicsContext, size: CGSize,
