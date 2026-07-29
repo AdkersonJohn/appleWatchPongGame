@@ -124,6 +124,13 @@ struct PowerUpSystem {
     mutating func consumeShield(for side: PaddleSide) { modify(side) { $0.hasShield = false } }
     mutating func consumeSticky(for side: PaddleSide) { modify(side) { $0.stickyArmed = false } }
 
+    /// Client-side only: mirror host-simulated state for rendering.
+    mutating func applyRemote(pickup: Pickup?, bottom: SidePowerUps, top: SidePowerUps) {
+        self.pickup = pickup
+        self.bottom = bottom
+        self.top = top
+    }
+
     #if DEBUG
     mutating func setPickupForTests(_ p: Pickup?) { pickup = p }
     #endif

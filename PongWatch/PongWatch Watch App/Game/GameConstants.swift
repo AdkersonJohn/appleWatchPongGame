@@ -62,7 +62,7 @@ enum GameConstants {
     static let mcServiceType: String = "pongwatch"
 
     /// Protocol version included in every MP message. Bump when the wire format changes.
-    static let multiplayerProtocolVersion: UInt8 = 1
+    static let multiplayerProtocolVersion: UInt8 = 2
 
     // MARK: - Power-ups
 

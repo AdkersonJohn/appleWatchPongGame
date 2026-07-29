@@ -411,6 +411,11 @@ final class GameState: ObservableObject {
         hapticPlayer.playClick()
     }
 
+    /// MP client: apply host-simulated power-up state for rendering.
+    func applyRemotePowerUps(pickup: Pickup?, bottom: SidePowerUps, top: SidePowerUps) {
+        powerUps.applyRemote(pickup: pickup, bottom: bottom, top: top)
+    }
+
     #if DEBUG
     /// Test-only accessor to the injected haptic player (for assertions).
     var injectedHapticPlayerForTests: HapticPlayer { hapticPlayer }
