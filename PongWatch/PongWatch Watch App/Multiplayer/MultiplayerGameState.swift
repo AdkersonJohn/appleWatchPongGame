@@ -154,7 +154,17 @@ final class MultiplayerGameState: ObservableObject {
                 matchPhase = .configuringMatch
             }
         case .stickyRelease:
-            break
+            guard service.role == .host else { return }
+            game.tapRelease(side: .top)
+        }
+    }
+
+    /// Screen tap during MP play. Host releases locally; client asks the host.
+    func localTapRelease() {
+        switch service.role {
+        case .host: game.tapRelease(side: .bottom)
+        case .client: service.send(.stickyRelease, reliable: true)
+        case nil: break
         }
     }
 
@@ -183,6 +193,9 @@ final class MultiplayerGameState: ObservableObject {
         // Re-arm the watchdog baseline — it'll arm on the first real peer
         // message in handle(_:).
         lastPeerActivityAt = nil
+        game.bottomExitScoresOpponent = true
+        game.topSideIsAI = false
+        game.resetPowerUps()
         game.prepareNextServe()
         game.phase = .playing
     }
@@ -232,6 +245,10 @@ final class MultiplayerGameState: ObservableObject {
 
         if snap.clientPaddleHit {
             game.playPaddleHitHaptic()
+        }
+
+        if snap.pickupCollected == .client {
+            game.playPowerUpHaptic()
         }
 
         // Celebrate only if we scored.
@@ -326,21 +343,13 @@ final class MultiplayerGameState: ObservableObject {
 
         guard service.role == .host else { return }
         let scoreBefore = game.score
-        let phaseBefore = game.phase
         let clientPaddleBeforeTick = game.aiPaddleX
-        let ballVYBefore = game.ball.velocity.dy
 
         game.update(dt: dt)
         game.aiPaddleX = clientPaddleBeforeTick
 
-        // Client paddle hit: ball was moving up (negative dy in host space) and is
-        // now moving down (positive dy) with the ball near the top paddle line.
-        let clientPaddleHit = ballVYBefore < 0 && game.ball.velocity.dy > 0 &&
-                              game.ball.position.y < GameConstants.paddleMarginY + GameConstants.paddleHeight
-
-        // Host paddle hit: ball was moving down and is now moving up near the bottom.
-        let hostPaddleHit = ballVYBefore > 0 && game.ball.velocity.dy < 0 &&
-                            game.ball.position.y > 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight
+        let clientPaddleHit = game.topPaddleHitThisTick
+        let hostPaddleHit = game.bottomPaddleHitThisTick
 
         var pendingScoreEvent: ScoreEvent? = nil
 
@@ -350,12 +359,10 @@ final class MultiplayerGameState: ObservableObject {
             pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .host)
         }
 
-        // Client scored: inner game flipped to .gameOver because ball exited bottom.
-        if phaseBefore == .playing && game.phase == .gameOver {
-            clientScore += 1
+        // Client scored: balls exited the host's side this tick.
+        if game.opponentScoredThisTick > 0 {
+            clientScore += game.opponentScoredThisTick
             pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .client)
-            game.phase = .playing
-            game.prepareNextServe()
         }
 
         // Check match-over (skip when winningScore is nil → no-limit mode).

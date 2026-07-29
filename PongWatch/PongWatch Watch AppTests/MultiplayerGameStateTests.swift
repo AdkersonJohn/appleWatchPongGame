@@ -516,6 +516,66 @@ final class MultiplayerGameStateTests: XCTestCase {
         XCTAssertTrue(state.game.powerUps.stickyArmed(for: .bottom))
         XCTAssertEqual(state.game.powerUps.pickup?.position.y ?? -1, 0.7, accuracy: 0.0001)
     }
+
+    func test_hostBumpsClientScoreWhenBallExitsHostSide() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.clientReady)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        state.startMatch(winningScore: 5)
+        game.countdownRemaining = nil
+        game.ball = Ball(position: CGPoint(x: 0.9, y: 0.995), velocity: CGVector(dx: 0, dy: 0.5))
+        state.tick(dt: 0.05)
+        XCTAssertEqual(state.clientScore, 1)
+        XCTAssertEqual(state.matchPhase, .playing)
+    }
+
+    func test_clientTapSendsStickyRelease() async {
+        let fake = FakeMultiplayerService()
+        let state = MultiplayerGameState(service: fake)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        state.localTapRelease()
+        let releases = fake.sentMessages.filter {
+            if case .stickyRelease = $0.message { return true } else { return false }
+        }
+        XCTAssertEqual(releases.count, 1)
+    }
+
+    func test_hostHandlesStickyReleaseForClientSide() async {
+        let fake = FakeMultiplayerService()
+        let game = GameState()
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .host)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        game.phase = .playing
+        game.topSideIsAI = false
+        game.grantPowerUpForTests(.stickyBall, to: .top)
+        let paddleBottomY = GameConstants.paddleMarginY + GameConstants.paddleHeight / 2
+        game.ball = Ball(position: CGPoint(x: 0.5, y: paddleBottomY + GameConstants.ballRadius + 0.001),
+                         velocity: CGVector(dx: 0, dy: -0.3))
+        game.update(dt: 0.05)
+        XCTAssertEqual(game.stuckBall?.side, .top)
+        fake.simulateIncoming(.stickyRelease)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertNil(game.stuckBall)
+        XCTAssertGreaterThan(game.ball.velocity.dy, 0)
+    }
+
+    func test_clientFiresSuccessHapticOnOwnPickupCollected() async {
+        let fake = FakeMultiplayerService()
+        let haptics = FakeHapticPlayer()
+        let game = GameState(hapticPlayer: haptics)
+        let state = MultiplayerGameState(service: fake, game: game)
+        fake.simulateConnected(as: .client)
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        fake.simulateIncoming(.snapshot(makeSnapshot(pickupCollected: .client)))
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(haptics.successCount, 1)
+    }
 }
 
 // MARK: - Test helpers
