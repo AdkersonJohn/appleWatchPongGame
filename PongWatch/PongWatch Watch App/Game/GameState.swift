@@ -372,9 +372,28 @@ final class GameState: ObservableObject {
                                         bottomPaddleX: playerPaddleX,
                                         topPaddleX: aiPaddleX) else { return }
         switch event {
-        case .collected(_, let side):
+        case .collected(let kind, let side):
             pickupCollectedThisTick = side
             if side == .bottom { hapticPlayer.playSuccess() }
+            if kind == .multiBall { splitBalls() }
+        }
+    }
+
+    private func splitBalls() {
+        let cap = GameConstants.multiBallCount
+        guard balls.count < cap else { return }
+        let sourceIndex = balls.firstIndex { $0.velocity != CGVector.zero } ?? 0
+        let src = balls[sourceIndex]
+        let srcSpeed = hypot(src.velocity.dx, src.velocity.dy)
+        let speed = srcSpeed > 0 ? srcSpeed : currentBallSpeed
+        // Angle measured from straight-down (+y): atan2(dx, dy).
+        let baseAngle = srcSpeed > 0 ? atan2(src.velocity.dx, src.velocity.dy) : CGFloat.pi
+        var offsets: [CGFloat] = [GameConstants.multiBallSplitAngle,
+                                  -GameConstants.multiBallSplitAngle]
+        while balls.count < cap, !offsets.isEmpty {
+            let a = baseAngle + offsets.removeFirst()
+            balls.append(Ball(position: src.position,
+                              velocity: CGVector(dx: sin(a) * speed, dy: cos(a) * speed)))
         }
     }
 
@@ -400,6 +419,11 @@ final class GameState: ObservableObject {
     }
     func setPickupForTests(_ p: Pickup?) {
         powerUps.setPickupForTests(p)
+    }
+    /// Simulates collecting a pickup, including ball-splitting side effects.
+    func collectPowerUpForTests(_ kind: PowerUpKind, by side: PaddleSide) {
+        powerUps.grant(kind, to: side)
+        if kind == .multiBall { splitBalls() }
     }
     #endif
 }
