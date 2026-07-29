@@ -117,19 +117,15 @@ struct GameView: View {
                          at: CGPoint(x: size.width / 2, y: size.height / 2),
                          anchor: .center)
         } else {
-            // Ball
-            let ballPx = CGPoint(
-                x: state.ball.position.x * size.width,
-                y: state.ball.position.y * size.height
-            )
-            let ballRadiusPx = GameConstants.ballRadius * size.width
-            let ballRect = CGRect(
-                x: ballPx.x - ballRadiusPx,
-                y: ballPx.y - ballRadiusPx,
-                width: ballRadiusPx * 2,
-                height: ballRadiusPx * 2
-            )
-            context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+            // Balls
+            for b in state.balls {
+                let ballPx = CGPoint(x: b.position.x * size.width,
+                                     y: b.position.y * size.height)
+                let ballRadiusPx = GameConstants.ballRadius * size.width
+                let ballRect = CGRect(x: ballPx.x - ballRadiusPx, y: ballPx.y - ballRadiusPx,
+                                      width: ballRadiusPx * 2, height: ballRadiusPx * 2)
+                context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+            }
         }
 
         // Score is now drawn as a SwiftUI overlay in `body` so the watch's
