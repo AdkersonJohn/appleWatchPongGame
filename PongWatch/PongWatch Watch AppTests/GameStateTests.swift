@@ -664,4 +664,60 @@ final class GameStateTests: XCTestCase {
         XCTAssertEqual(state.balls[0].position.x, 0.3, accuracy: 0.0001)
         XCTAssertEqual(state.ball.velocity.dy, 0.2, accuracy: 0.0001)
     }
+
+    func test_multiBallSplitsToThreeAtSameSpeed() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount)
+        for b in state.balls {
+            XCTAssertEqual(hypot(b.velocity.dx, b.velocity.dy), 0.6, accuracy: 0.001)
+        }
+    }
+
+    func test_multiBallRecatchTopsUpToCap() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls.removeLast()                          // simulate one lost → 2 left
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount)
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount, "hard cap")
+    }
+
+    func test_extraBallExitingBottomIsRemovedWithoutGameOver() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls[2] = Ball(position: CGPoint(x: 0.9, y: 0.995), velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing)
+        XCTAssertEqual(state.balls.count, 2)
+    }
+
+    func test_extraBallExitingTopScoresAndIsRemovedWithoutCountdown() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls[2] = Ball(position: CGPoint(x: 0.9, y: 0.005), velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.balls.count, 2)
+        XCTAssertNil(state.countdownRemaining, "no serve reset while other balls are live")
+    }
+
+    func test_lastBallExitingTopStartsCountdownAsBefore() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.005), velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.balls.count, 1)
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
+    }
 }
