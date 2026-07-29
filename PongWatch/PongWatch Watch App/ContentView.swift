@@ -100,7 +100,8 @@ struct ContentView: View {
                 state: mpState.game,
                 multiplayerScores: (mine: myScore, opp: oppScore),
                 onTick: { dt in mpState.tick(dt: dt) },
-                onCrownChange: { v in mpState.setLocalPaddle(normalizedCrown: v) }
+                onCrownChange: { v in mpState.setLocalPaddle(normalizedCrown: v) },
+                onTap: { mpState.localTapRelease() }
             )
             .onAppear {
                 // Stop advertising once we start playing.

@@ -32,6 +32,12 @@ final class GameState: ObservableObject {
     var topSideIsAI: Bool = true
     /// Set for exactly one update() when a pickup was collected; consumed by MP snapshots.
     private(set) var pickupCollectedThisTick: PaddleSide?
+    /// MP host mode: a ball exiting the bottom scores for the opponent and
+    /// re-serves instead of ending the game. Single-player leaves this false.
+    var bottomExitScoresOpponent: Bool = false
+    private(set) var opponentScoredThisTick: Int = 0
+    private(set) var bottomPaddleHitThisTick: Bool = false
+    private(set) var topPaddleHitThisTick: Bool = false
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
     private var countdownElapsed: CGFloat = 0
@@ -91,6 +97,9 @@ final class GameState: ObservableObject {
     func update(dt: CGFloat) {
         guard phase == .playing else { return }
         pickupCollectedThisTick = nil
+        opponentScoredThisTick = 0
+        bottomPaddleHitThisTick = false
+        topPaddleHitThisTick = false
 
         updateParticles(dt: dt)
 
@@ -150,6 +159,7 @@ final class GameState: ObservableObject {
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: playerPaddleX)
                     hapticPlayer.playClick()
+                    bottomPaddleHitThisTick = true
                     hitCount += 1
                     if hitCount % GameConstants.hitsPerSpeedTier == 0,
                        currentBallSpeed < GameConstants.maxBallSpeed {
@@ -172,6 +182,7 @@ final class GameState: ObservableObject {
                     stickBall(at: i, to: .top)
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: aiPaddleX)
+                    topPaddleHitThisTick = true
                 }
             }
         }
@@ -215,6 +226,10 @@ final class GameState: ObservableObject {
                     powerUps.consumeShield(for: .bottom)
                     balls[i].position.y = 1.0
                     balls[i].velocity.dy = -abs(balls[i].velocity.dy)
+                } else if bottomExitScoresOpponent {
+                    opponentScoredThisTick += 1
+                    if balls.count == 1 { startCountdown(); return }
+                    removeBall(at: i); continue
                 } else if balls.count > 1 {
                     removeBall(at: i); continue
                 } else {
@@ -411,9 +426,19 @@ final class GameState: ObservableObject {
         hapticPlayer.playClick()
     }
 
+    /// Plays the pickup-collected haptic. Exposed so multiplayer can trigger it
+    /// when the inbound snapshot reports the local side collected a pickup.
+    func playPowerUpHaptic() { hapticPlayer.playSuccess() }
+
     /// MP client: apply host-simulated power-up state for rendering.
     func applyRemotePowerUps(pickup: Pickup?, bottom: SidePowerUps, top: SidePowerUps) {
         powerUps.applyRemote(pickup: pickup, bottom: bottom, top: top)
+    }
+
+    /// Clears all power-up state. Called by MP on match start/rematch.
+    func resetPowerUps() {
+        powerUps.reset()
+        stuckBall = nil
     }
 
     #if DEBUG

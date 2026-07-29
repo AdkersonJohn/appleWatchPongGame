@@ -508,6 +508,29 @@ final class GameStateTests: XCTestCase {
         XCTAssertTrue(state.powerUps.effects(for: .bottom).isWide)
     }
 
+    func test_mpModeBottomExitScoresOpponentAndServesInsteadOfGameOver() {
+        let state = GameState()
+        state.phase = .playing
+        state.bottomExitScoresOpponent = true
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995), velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing)
+        XCTAssertEqual(state.opponentScoredThisTick, 1)
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
+    }
+
+    func test_paddleHitFlagsSetForOneTick() {
+        let state = GameState()
+        state.phase = .playing
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertTrue(state.bottomPaddleHitThisTick)
+        state.update(dt: 0.05)
+        XCTAssertFalse(state.bottomPaddleHitThisTick, "flag is one-tick")
+    }
+
     func test_widePaddleWidensPlayerCollisionWindow() {
         let state = GameState()
         state.phase = .playing
