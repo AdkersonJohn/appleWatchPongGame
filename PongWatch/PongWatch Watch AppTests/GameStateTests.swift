@@ -650,4 +650,18 @@ final class GameStateTests: XCTestCase {
         XCTAssertNil(state.stuckBall)
         XCTAssertGreaterThan(state.ball.velocity.dy, 0, "top release goes downward")
     }
+
+    func test_defaultGameHasExactlyOneBall() {
+        let state = GameState()
+        XCTAssertEqual(state.balls.count, 1)
+        state.startGame()
+        XCTAssertEqual(state.balls.count, 1)
+    }
+
+    func test_ballProxyReadsAndWritesFirstBall() {
+        let state = GameState()
+        state.ball = Ball(position: CGPoint(x: 0.3, y: 0.7), velocity: CGVector(dx: 0.1, dy: 0.2))
+        XCTAssertEqual(state.balls[0].position.x, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.velocity.dy, 0.2, accuracy: 0.0001)
+    }
 }
