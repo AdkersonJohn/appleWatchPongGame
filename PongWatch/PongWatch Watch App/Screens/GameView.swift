@@ -12,6 +12,8 @@ struct GameView: View {
     /// Closure called when the crown changes — replaces default state.setPlayerPaddle.
     /// If nil, default behavior is used.
     var onCrownChange: ((CGFloat) -> Void)? = nil
+    /// Called on a screen tap. If nil, single-player default: release a bottom-stuck ball.
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -43,6 +45,9 @@ struct GameView: View {
             .padding(.leading, 4)
         }
         .focusable()
+        .onTapGesture {
+            if let onTap { onTap() } else { state.tapRelease(side: .bottom) }
+        }
         .digitalCrownRotation(
             $crownValue,
             from: 0.0,
@@ -87,16 +92,21 @@ struct GameView: View {
     }
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
+        let bottomSticky = state.powerUps.stickyArmed(for: .bottom) || state.stuckBall?.side == .bottom
+        let topSticky = state.powerUps.stickyArmed(for: .top) || state.stuckBall?.side == .top
+
         // Player paddle (bottom)
         drawPaddle(context: context, size: size,
                    centerX: state.playerPaddleX,
                    centerY: 1.0 - GameConstants.paddleMarginY,
-                   width: state.powerUps.paddleWidth(for: .bottom))
+                   width: state.powerUps.paddleWidth(for: .bottom),
+                   color: bottomSticky ? .green : .white)
         // AI paddle (top)
         drawPaddle(context: context, size: size,
                    centerX: state.aiPaddleX,
                    centerY: GameConstants.paddleMarginY,
-                   width: state.powerUps.paddleWidth(for: .top))
+                   width: state.powerUps.paddleWidth(for: .top),
+                   color: topSticky ? .green : .white)
 
         if let count = state.countdownRemaining {
             // Countdown: hide ball, show big number in center.
