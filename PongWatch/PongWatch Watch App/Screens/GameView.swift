@@ -88,19 +88,15 @@ struct GameView: View {
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
         // Player paddle (bottom)
-        drawPaddle(
-            context: context,
-            size: size,
-            centerX: state.playerPaddleX,
-            centerY: 1.0 - GameConstants.paddleMarginY
-        )
+        drawPaddle(context: context, size: size,
+                   centerX: state.playerPaddleX,
+                   centerY: 1.0 - GameConstants.paddleMarginY,
+                   width: state.powerUps.paddleWidth(for: .bottom))
         // AI paddle (top)
-        drawPaddle(
-            context: context,
-            size: size,
-            centerX: state.aiPaddleX,
-            centerY: GameConstants.paddleMarginY
-        )
+        drawPaddle(context: context, size: size,
+                   centerX: state.aiPaddleX,
+                   centerY: GameConstants.paddleMarginY,
+                   width: state.powerUps.paddleWidth(for: .top))
 
         if let count = state.countdownRemaining {
             // Countdown: hide ball, show big number in center.
@@ -138,10 +134,27 @@ struct GameView: View {
             let color = Color(red: p.red, green: p.green, blue: p.blue).opacity(alpha)
             context.fill(Path(ellipseIn: rect), with: .color(color))
         }
+
+        // Power-up pickup
+        if let pickup = state.powerUps.pickup {
+            let c = GameConstants.pickupColor(for: pickup.kind)
+            let center = CGPoint(x: pickup.position.x * size.width,
+                                 y: pickup.position.y * size.height)
+            let r = GameConstants.powerUpPickupRadius * size.width
+            let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+            context.fill(Path(ellipseIn: rect),
+                         with: .color(Color(red: c.0, green: c.1, blue: c.2)))
+            let symbol = context.resolve(
+                Image(systemName: GameConstants.pickupSymbol(for: pickup.kind))
+            )
+            context.draw(symbol, in: rect.insetBy(dx: r * 0.45, dy: r * 0.45))
+        }
     }
 
-    private func drawPaddle(context: GraphicsContext, size: CGSize, centerX: CGFloat, centerY: CGFloat) {
-        let wPx = GameConstants.paddleWidth * size.width
+    private func drawPaddle(context: GraphicsContext, size: CGSize,
+                            centerX: CGFloat, centerY: CGFloat,
+                            width: CGFloat, color: Color = .white) {
+        let wPx = width * size.width
         let hPx = GameConstants.paddleHeight * size.height
         let rect = CGRect(
             x: centerX * size.width - wPx / 2,
@@ -150,7 +163,7 @@ struct GameView: View {
             height: hPx
         )
         let path = Path(roundedRect: rect, cornerRadius: hPx / 2)
-        context.fill(path, with: .color(.white))
+        context.fill(path, with: .color(color))
     }
 }
 
