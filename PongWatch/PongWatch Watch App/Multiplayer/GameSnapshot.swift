@@ -17,6 +17,29 @@ enum NetworkMessage: Codable, Equatable {
     /// on its waiting view until this arrives so the score picker can't open
     /// while the invite is still pending.
     case clientReady
+    /// Client → host: the client tapped its screen to release a stuck ball.
+    /// Host validates (no-op unless the client's side actually holds one).
+    case stickyRelease
+}
+
+struct BallState: Codable, Equatable {
+    var x: CGFloat
+    var y: CGFloat
+    var vx: CGFloat
+    var vy: CGFloat
+}
+
+struct PickupState: Codable, Equatable {
+    var kind: PowerUpKind
+    var x: CGFloat
+    var y: CGFloat
+    var driftSign: CGFloat
+}
+
+struct EffectsState: Codable, Equatable {
+    var wideRemaining: CGFloat
+    var hasShield: Bool
+    var stickyArmed: Bool
 }
 
 /// Full game state snapshot from host → client at 30Hz.
@@ -25,10 +48,8 @@ enum NetworkMessage: Codable, Equatable {
 struct GameSnapshot: Codable, Equatable {
     var protoVersion: UInt8
     var phase: GamePhase
-    var ballX: CGFloat
-    var ballY: CGFloat
-    var ballVX: CGFloat
-    var ballVY: CGFloat
+    /// All live balls in HOST coordinate space. Client flips Y on render.
+    var balls: [BallState]
     var hostPaddleX: CGFloat
     var clientPaddleX: CGFloat
     var hostScore: Int
@@ -41,6 +62,13 @@ struct GameSnapshot: Codable, Equatable {
     var hostPaddleHit: Bool
     /// True for one snapshot on the tick client's paddle collided.
     var clientPaddleHit: Bool
+    var hostEffects: EffectsState
+    var clientEffects: EffectsState
+    var pickup: PickupState?
+    /// Non-nil for exactly one snapshot after a pickup is collected.
+    var pickupCollected: PeerRole?
+    /// Which side (if any) currently holds a stuck ball. nil when no ball is held.
+    var stuckSide: PeerRole?
     /// Monotonic tick sequence; receiver discards out-of-order snapshots.
     var tickSeq: UInt32
 }

@@ -153,6 +153,18 @@ final class MultiplayerGameState: ObservableObject {
             if matchPhase == .waitingForOpponentAccept {
                 matchPhase = .configuringMatch
             }
+        case .stickyRelease:
+            guard service.role == .host else { return }
+            game.tapRelease(side: .top)
+        }
+    }
+
+    /// Screen tap during MP play. Host releases locally; client asks the host.
+    func localTapRelease() {
+        switch service.role {
+        case .host: game.tapRelease(side: .bottom)
+        case .client: service.send(.stickyRelease, reliable: true)
+        case nil: break
         }
     }
 
@@ -181,6 +193,9 @@ final class MultiplayerGameState: ObservableObject {
         // Re-arm the watchdog baseline — it'll arm on the first real peer
         // message in handle(_:).
         lastPeerActivityAt = nil
+        game.bottomExitScoresOpponent = true
+        game.topSideIsAI = false
+        game.resetPowerUps()
         game.prepareNextServe()
         game.phase = .playing
     }
@@ -201,12 +216,32 @@ final class MultiplayerGameState: ObservableObject {
         if delta == 0 || delta > UInt32.max / 2 { return }
         lastReceivedTickSeq = snap.tickSeq
 
-        game.ball = Ball(
-            position: CGPoint(x: snap.ballX, y: 1.0 - snap.ballY),
-            velocity: CGVector(dx: snap.ballVX, dy: -snap.ballVY)
+        game.balls = snap.balls.map {
+            Ball(position: CGPoint(x: $0.x, y: 1.0 - $0.y),
+                 velocity: CGVector(dx: $0.vx, dy: -$0.vy))
+        }
+        // Host is the client's TOP paddle; client itself is BOTTOM.
+        let hostSide = SidePowerUps(wideRemaining: snap.hostEffects.wideRemaining,
+                                    hasShield: snap.hostEffects.hasShield,
+                                    stickyArmed: snap.hostEffects.stickyArmed)
+        let clientSide = SidePowerUps(wideRemaining: snap.clientEffects.wideRemaining,
+                                      hasShield: snap.clientEffects.hasShield,
+                                      stickyArmed: snap.clientEffects.stickyArmed)
+        game.applyRemotePowerUps(
+            pickup: snap.pickup.map { Pickup(kind: $0.kind,
+                                             position: CGPoint(x: $0.x, y: 1.0 - $0.y),
+                                             driftSign: -$0.driftSign) },
+            bottom: clientSide,
+            top: hostSide
         )
         // DO NOT overwrite game.playerPaddleX — that's our locally predicted paddle.
         game.aiPaddleX = snap.hostPaddleX
+        // Client is BOTTOM, host is TOP from the client's perspective.
+        switch snap.stuckSide {
+        case .client: game.remoteStuckSide = .bottom
+        case .host: game.remoteStuckSide = .top
+        case nil: game.remoteStuckSide = nil
+        }
         game.score = snap.clientScore
         game.countdownRemaining = snap.countdownRemaining
         game.phase = snap.phase
@@ -216,6 +251,10 @@ final class MultiplayerGameState: ObservableObject {
 
         if snap.clientPaddleHit {
             game.playPaddleHitHaptic()
+        }
+
+        if snap.pickupCollected == .client {
+            game.playPowerUpHaptic()
         }
 
         // Celebrate only if we scored.
@@ -310,21 +349,13 @@ final class MultiplayerGameState: ObservableObject {
 
         guard service.role == .host else { return }
         let scoreBefore = game.score
-        let phaseBefore = game.phase
         let clientPaddleBeforeTick = game.aiPaddleX
-        let ballVYBefore = game.ball.velocity.dy
 
         game.update(dt: dt)
         game.aiPaddleX = clientPaddleBeforeTick
 
-        // Client paddle hit: ball was moving up (negative dy in host space) and is
-        // now moving down (positive dy) with the ball near the top paddle line.
-        let clientPaddleHit = ballVYBefore < 0 && game.ball.velocity.dy > 0 &&
-                              game.ball.position.y < GameConstants.paddleMarginY + GameConstants.paddleHeight
-
-        // Host paddle hit: ball was moving down and is now moving up near the bottom.
-        let hostPaddleHit = ballVYBefore > 0 && game.ball.velocity.dy < 0 &&
-                            game.ball.position.y > 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight
+        let clientPaddleHit = game.topPaddleHitThisTick
+        let hostPaddleHit = game.bottomPaddleHitThisTick
 
         var pendingScoreEvent: ScoreEvent? = nil
 
@@ -334,12 +365,10 @@ final class MultiplayerGameState: ObservableObject {
             pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .host)
         }
 
-        // Client scored: inner game flipped to .gameOver because ball exited bottom.
-        if phaseBefore == .playing && game.phase == .gameOver {
-            clientScore += 1
+        // Client scored: balls exited the host's side this tick.
+        if game.opponentScoredThisTick > 0 {
+            clientScore += game.opponentScoredThisTick
             pendingScoreEvent = ScoreEvent(impactX: game.ball.position.x, scoredBy: .client)
-            game.phase = .playing
-            game.prepareNextServe()
         }
 
         // Check match-over (skip when winningScore is nil → no-limit mode).
@@ -413,13 +442,19 @@ final class MultiplayerGameState: ObservableObject {
         clientPaddleHit: Bool = false
     ) {
         tickSeq &+= 1
+        func effectsState(_ side: PaddleSide) -> EffectsState {
+            let e = game.powerUps.effects(for: side)
+            return EffectsState(wideRemaining: e.wideRemaining,
+                                hasShield: e.hasShield,
+                                stickyArmed: e.stickyArmed)
+        }
+        let collectedRole: PeerRole? = game.pickupCollectedThisTick.map { $0 == .bottom ? .host : .client }
+        let stuckSide: PeerRole? = game.stuckBall.map { $0.side == .bottom ? .host : .client }
         let snap = GameSnapshot(
             protoVersion: GameConstants.multiplayerProtocolVersion,
             phase: game.phase,
-            ballX: game.ball.position.x,
-            ballY: game.ball.position.y,
-            ballVX: game.ball.velocity.dx,
-            ballVY: game.ball.velocity.dy,
+            balls: game.balls.map { BallState(x: $0.position.x, y: $0.position.y,
+                                              vx: $0.velocity.dx, vy: $0.velocity.dy) },
             hostPaddleX: game.playerPaddleX,
             clientPaddleX: game.aiPaddleX,
             hostScore: hostScore,
@@ -428,6 +463,12 @@ final class MultiplayerGameState: ObservableObject {
             scoreEvent: scoreEvent,
             hostPaddleHit: hostPaddleHit,
             clientPaddleHit: clientPaddleHit,
+            hostEffects: effectsState(.bottom),
+            clientEffects: effectsState(.top),
+            pickup: game.powerUps.pickup.map { PickupState(kind: $0.kind, x: $0.position.x,
+                                                           y: $0.position.y, driftSign: $0.driftSign) },
+            pickupCollected: collectedRole,
+            stuckSide: stuckSide,
             tickSeq: tickSeq
         )
         service.send(.snapshot(snap), reliable: false)

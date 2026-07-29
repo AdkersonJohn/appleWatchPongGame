@@ -3,7 +3,9 @@ import XCTest
 
 final class FakeHapticPlayer: HapticPlayer {
     var playedCount = 0
+    var successCount = 0
     func playClick() { playedCount += 1 }
+    func playSuccess() { successCount += 1 }
 }
 
 final class GameStateTests: XCTestCase {
@@ -473,5 +475,307 @@ final class GameStateTests: XCTestCase {
             XCTAssertEqual(p.position.x, impactX, accuracy: maxDisplacement)
             XCTAssertLessThanOrEqual(p.position.y, maxDisplacement)
         }
+    }
+
+    func test_powerUpTimersFrozenDuringCountdown() {
+        let state = GameState()
+        state.startGame()                       // countdown running
+        let before = state.powerUps.timeUntilNextSpawn
+        state.update(dt: 1.0)                   // still counting down
+        XCTAssertEqual(state.powerUps.timeUntilNextSpawn, before, accuracy: 0.0001)
+    }
+
+    func test_powerUpSpawnTimerRunsDuringLiveRally() {
+        let state = GameState()
+        state.startGame()
+        state.update(dt: CGFloat(GameConstants.countdownStart)) // finish countdown
+        let before = state.powerUps.timeUntilNextSpawn
+        state.update(dt: 0.05)
+        XCTAssertLessThan(state.powerUps.timeUntilNextSpawn, before)
+    }
+
+    func test_collectingPickupFiresSuccessHaptic() {
+        let haptics = FakeHapticPlayer()
+        let state = GameState(hapticPlayer: haptics)
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.1))
+        state.setPickupForTests(Pickup(kind: .widePaddle,
+                                       position: CGPoint(x: 0.5, y: 1.0 - GameConstants.paddleMarginY - 0.02),
+                                       driftSign: 1))
+        state.update(dt: 0.02)   // paddle default 0.5 → intercepts
+        XCTAssertEqual(haptics.successCount, 1)
+        XCTAssertEqual(state.pickupCollectedThisTick, .bottom)
+        XCTAssertTrue(state.powerUps.effects(for: .bottom).isWide)
+    }
+
+    func test_mpModeBottomExitScoresOpponentAndServesInsteadOfGameOver() {
+        let state = GameState()
+        state.phase = .playing
+        state.bottomExitScoresOpponent = true
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995), velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing)
+        XCTAssertEqual(state.opponentScoredThisTick, 1)
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
+    }
+
+    func test_paddleHitFlagsSetForOneTick() {
+        let state = GameState()
+        state.phase = .playing
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertTrue(state.bottomPaddleHitThisTick)
+        state.update(dt: 0.05)
+        XCTAssertFalse(state.bottomPaddleHitThisTick, "flag is one-tick")
+    }
+
+    func test_widePaddleWidensPlayerCollisionWindow() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.widePaddle, to: .bottom)
+        // x-offset 0.13: outside base half-width (0.10) but inside wide half (0.15).
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5 + 0.13, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "wide paddle should have bounced the ball")
+    }
+
+    func test_resetClearsPowerUps() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .bottom)
+        state.reset()
+        XCTAssertFalse(state.powerUps.hasShield(for: .bottom))
+        XCTAssertNil(state.powerUps.pickup)
+    }
+
+    func test_shieldSavesBottomExitAndIsConsumed() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .bottom)
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995),
+                          velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing, "shield should prevent game over")
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "ball should bounce back up")
+        XCTAssertFalse(state.powerUps.hasShield(for: .bottom), "shield is one-use")
+    }
+
+    func test_shieldSavesTopExitWithoutScoring() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.shield, to: .top)
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.005),
+                          velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 0, "shielded save is not a point")
+        XCTAssertGreaterThan(state.ball.velocity.dy, 0)
+        XCTAssertFalse(state.powerUps.hasShield(for: .top))
+    }
+
+    func test_bottomExitWithoutShieldStillEndsGame() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.995),
+                          velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .gameOver)
+    }
+
+    func test_stickyArmedPaddleCatchesBall() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.55, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertNotNil(state.stuckBall)
+        XCTAssertEqual(state.stuckBall?.side, .bottom)
+        XCTAssertEqual(state.ball.velocity.dx, 0, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.velocity.dy, 0, accuracy: 0.0001)
+        XCTAssertFalse(state.powerUps.stickyArmed(for: .bottom), "one catch per pickup")
+    }
+
+    func test_stuckBallRidesPaddle() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)          // catch at offset ~0
+        state.setPlayerPaddle(normalizedCrown: 0.8)
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.ball.position.x, state.playerPaddleX, accuracy: 0.001)
+    }
+
+    func test_tapReleaseLaunchesUpwardAtCurrentSpeed() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertNotNil(state.stuckBall)
+        state.tapRelease(side: .bottom)
+        XCTAssertNil(state.stuckBall)
+        XCTAssertLessThan(state.ball.velocity.dy, 0, "bottom release goes upward")
+        let mag = hypot(state.ball.velocity.dx, state.ball.velocity.dy)
+        XCTAssertEqual(mag, GameConstants.initialBallSpeed, accuracy: 0.001)
+    }
+
+    func test_tapReleaseWrongSideIsIgnored() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        state.tapRelease(side: .top)
+        XCTAssertNotNil(state.stuckBall, "top tap must not release a bottom-stuck ball")
+    }
+
+    func test_playerAutoReleaseAfterHoldSeconds() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let paddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleTopY - GameConstants.ballRadius - 0.001),
+                          velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        var elapsed: CGFloat = 0
+        while elapsed < GameConstants.stickyHoldSeconds + 0.1 {
+            state.update(dt: 0.05); elapsed += 0.05
+        }
+        XCTAssertNil(state.stuckBall)
+        XCTAssertLessThan(state.ball.velocity.dy, 0)
+    }
+
+    func test_aiCatchAutoReleasesAfterOneSecond() {
+        let state = GameState()
+        state.phase = .playing
+        state.grantPowerUpForTests(.stickyBall, to: .top)
+        let paddleBottomY = GameConstants.paddleMarginY + GameConstants.paddleHeight / 2
+        state.ball = Ball(position: CGPoint(x: 0.5, y: paddleBottomY + GameConstants.ballRadius + 0.001),
+                          velocity: CGVector(dx: 0, dy: -0.3))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.stuckBall?.side, .top)
+        var elapsed: CGFloat = 0
+        while elapsed < GameConstants.aiStickyHoldSeconds + 0.1 {
+            state.update(dt: 0.05); elapsed += 0.05
+        }
+        XCTAssertNil(state.stuckBall)
+        XCTAssertGreaterThan(state.ball.velocity.dy, 0, "top release goes downward")
+    }
+
+    func test_secondStickyCatchReleasesFirstStuckBall() {
+        let state = GameState()
+        state.phase = .playing
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, 3)
+
+        // Neutralize balls 1 and 2 so they don't interfere with the first catch.
+        state.balls[1] = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+        state.balls[2] = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)
+
+        // Catch ball A (index 0) on the bottom paddle.
+        state.grantPowerUpForTests(.stickyBall, to: .bottom)
+        let bottomPaddleTopY = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        state.balls[0] = Ball(position: CGPoint(x: 0.55, y: bottomPaddleTopY - GameConstants.ballRadius - 0.001),
+                              velocity: CGVector(dx: 0, dy: 0.3))
+        state.update(dt: 0.05)
+        XCTAssertNotNil(state.stuckBall)
+        XCTAssertEqual(state.stuckBall?.side, .bottom)
+        XCTAssertEqual(state.stuckBall?.ballIndex, 0)
+
+        // Now catch ball B (index 1) on the top paddle while A is still held.
+        state.grantPowerUpForTests(.stickyBall, to: .top)
+        let topPaddleBottomY = GameConstants.paddleMarginY + GameConstants.paddleHeight / 2
+        state.balls[1] = Ball(position: CGPoint(x: 0.5, y: topPaddleBottomY + GameConstants.ballRadius + 0.001),
+                              velocity: CGVector(dx: 0, dy: -0.3))
+        state.update(dt: 0.05)
+
+        XCTAssertEqual(state.stuckBall?.side, .top, "second catch should hold the new ball")
+        XCTAssertEqual(state.stuckBall?.ballIndex, 1)
+        XCTAssertNotEqual(state.balls[0].velocity, CGVector.zero,
+                           "ball A must be released, not orphaned at zero velocity")
+        XCTAssertLessThan(state.balls[0].velocity.dy, 0,
+                           "ball A must be launched away from the bottom paddle")
+    }
+
+    func test_defaultGameHasExactlyOneBall() {
+        let state = GameState()
+        XCTAssertEqual(state.balls.count, 1)
+        state.startGame()
+        XCTAssertEqual(state.balls.count, 1)
+    }
+
+    func test_ballProxyReadsAndWritesFirstBall() {
+        let state = GameState()
+        state.ball = Ball(position: CGPoint(x: 0.3, y: 0.7), velocity: CGVector(dx: 0.1, dy: 0.2))
+        XCTAssertEqual(state.balls[0].position.x, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(state.ball.velocity.dy, 0.2, accuracy: 0.0001)
+    }
+
+    func test_multiBallSplitsToThreeAtSameSpeed() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount)
+        for b in state.balls {
+            XCTAssertEqual(hypot(b.velocity.dx, b.velocity.dy), 0.6, accuracy: 0.001)
+        }
+    }
+
+    func test_multiBallRecatchTopsUpToCap() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls.removeLast()                          // simulate one lost → 2 left
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount)
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        XCTAssertEqual(state.balls.count, GameConstants.multiBallCount, "hard cap")
+    }
+
+    func test_extraBallExitingBottomIsRemovedWithoutGameOver() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls[2] = Ball(position: CGPoint(x: 0.9, y: 0.995), velocity: CGVector(dx: 0, dy: 0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.phase, .playing)
+        XCTAssertEqual(state.balls.count, 2)
+    }
+
+    func test_extraBallExitingTopScoresAndIsRemovedWithoutCountdown() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: CGVector(dx: 0, dy: 0.6))
+        state.collectPowerUpForTests(.multiBall, by: .bottom)
+        state.balls[2] = Ball(position: CGPoint(x: 0.9, y: 0.005), velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.balls.count, 2)
+        XCTAssertNil(state.countdownRemaining, "no serve reset while other balls are live")
+    }
+
+    func test_lastBallExitingTopStartsCountdownAsBefore() {
+        let state = GameState()
+        state.phase = .playing
+        state.ball = Ball(position: CGPoint(x: 0.9, y: 0.005), velocity: CGVector(dx: 0, dy: -0.5))
+        state.update(dt: 0.05)
+        XCTAssertEqual(state.score, 1)
+        XCTAssertEqual(state.balls.count, 1)
+        XCTAssertEqual(state.countdownRemaining, GameConstants.countdownStart)
     }
 }

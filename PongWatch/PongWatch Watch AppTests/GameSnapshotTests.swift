@@ -1,22 +1,15 @@
 import XCTest
+import CoreGraphics
 @testable import PongWatch_Watch_App
 
 final class GameSnapshotTests: XCTestCase {
     func test_gameSnapshotRoundtripsViaJSON() throws {
-        let original = GameSnapshot(
-            protoVersion: 1,
-            phase: .playing,
-            ballX: 0.42,
-            ballY: 0.37,
-            ballVX: -0.5,
-            ballVY: 0.8,
+        let original = makeSnapshot(
+            balls: [BallState(x: 0.42, y: 0.37, vx: -0.5, vy: 0.8)],
             hostPaddleX: 0.5,
             clientPaddleX: 0.6,
             hostScore: 2,
             clientScore: 3,
-            countdownRemaining: nil,
-            scoreEvent: nil,
-            hostPaddleHit: false,
             clientPaddleHit: true,
             tickSeq: 1234
         )
@@ -33,15 +26,7 @@ final class GameSnapshotTests: XCTestCase {
     }
 
     func test_networkMessageEnvelopeCarriesSnapshot() throws {
-        let snap = GameSnapshot(
-            protoVersion: 1, phase: .playing,
-            ballX: 0.5, ballY: 0.5, ballVX: 0, ballVY: 0,
-            hostPaddleX: 0.5, clientPaddleX: 0.5,
-            hostScore: 0, clientScore: 0,
-            countdownRemaining: 3, scoreEvent: nil,
-            hostPaddleHit: false, clientPaddleHit: false,
-            tickSeq: 0
-        )
+        let snap = makeSnapshot(countdownRemaining: 3, tickSeq: 0)
         let msg = NetworkMessage.snapshot(snap)
         let data = try JSONEncoder().encode(msg)
         let decoded = try JSONDecoder().decode(NetworkMessage.self, from: data)
@@ -59,4 +44,57 @@ final class GameSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded.scoredBy, .client)
         XCTAssertEqual(decoded.impactX, 0.37, accuracy: 1e-9)
     }
+
+    func test_protocolVersionIsTwo() {
+        XCTAssertEqual(GameConstants.multiplayerProtocolVersion, 2)
+    }
+
+    func test_snapshotWithPowerUpsRoundTripsThroughJSON() throws {
+        let snap = makeSnapshot(
+            balls: [BallState(x: 0.1, y: 0.2, vx: 0.3, vy: 0.4),
+                    BallState(x: 0.5, y: 0.6, vx: -0.3, vy: -0.4)],
+            hostEffects: EffectsState(wideRemaining: 7.5, hasShield: true, stickyArmed: false),
+            clientEffects: EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: true),
+            pickup: PickupState(kind: .multiBall, x: 0.5, y: 0.42, driftSign: -1),
+            pickupCollected: .client
+        )
+        let data = try JSONEncoder().encode(NetworkMessage.snapshot(snap))
+        let decoded = try JSONDecoder().decode(NetworkMessage.self, from: data)
+        XCTAssertEqual(decoded, .snapshot(snap))
+    }
+
+    func test_stickyReleaseMessageRoundTrips() throws {
+        let data = try JSONEncoder().encode(NetworkMessage.stickyRelease)
+        let decoded = try JSONDecoder().decode(NetworkMessage.self, from: data)
+        XCTAssertEqual(decoded, .stickyRelease)
+    }
+}
+
+// MARK: - Test helpers
+
+private func makeSnapshot(
+    phase: GamePhase = .playing,
+    balls: [BallState] = [BallState(x: 0.5, y: 0.5, vx: 0, vy: 0)],
+    hostPaddleX: CGFloat = 0.5,
+    clientPaddleX: CGFloat = 0.5,
+    hostScore: Int = 0,
+    clientScore: Int = 0,
+    countdownRemaining: Int? = nil,
+    scoreEvent: ScoreEvent? = nil,
+    hostPaddleHit: Bool = false,
+    clientPaddleHit: Bool = false,
+    hostEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
+    clientEffects: EffectsState = EffectsState(wideRemaining: 0, hasShield: false, stickyArmed: false),
+    pickup: PickupState? = nil,
+    pickupCollected: PeerRole? = nil,
+    stuckSide: PeerRole? = nil,
+    tickSeq: UInt32 = 1
+) -> GameSnapshot {
+    GameSnapshot(protoVersion: GameConstants.multiplayerProtocolVersion, phase: phase,
+                 balls: balls, hostPaddleX: hostPaddleX, clientPaddleX: clientPaddleX,
+                 hostScore: hostScore, clientScore: clientScore,
+                 countdownRemaining: countdownRemaining, scoreEvent: scoreEvent,
+                 hostPaddleHit: hostPaddleHit, clientPaddleHit: clientPaddleHit,
+                 hostEffects: hostEffects, clientEffects: clientEffects,
+                 pickup: pickup, pickupCollected: pickupCollected, stuckSide: stuckSide, tickSeq: tickSeq)
 }

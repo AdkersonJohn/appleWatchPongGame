@@ -62,5 +62,38 @@ enum GameConstants {
     static let mcServiceType: String = "pongwatch"
 
     /// Protocol version included in every MP message. Bump when the wire format changes.
-    static let multiplayerProtocolVersion: UInt8 = 1
+    static let multiplayerProtocolVersion: UInt8 = 2
+
+    // MARK: - Power-ups
+
+    static let powerUpSpawnIntervalMin: CGFloat = 12
+    static let powerUpSpawnIntervalMax: CGFloat = 20
+    /// Pickup drift speed, normalized units per second.
+    static let powerUpDriftSpeed: CGFloat = 0.08
+    /// Pickup radius = 1.5 × ballRadius.
+    static let powerUpPickupRadius: CGFloat = 0.03
+    static let widePaddleFactor: CGFloat = 1.5
+    static let widePaddleDuration: CGFloat = 10
+    static let stickyHoldSeconds: CGFloat = 3
+    static let aiStickyHoldSeconds: CGFloat = 1
+    static let multiBallCount: Int = 3
+    static let multiBallSplitAngle: CGFloat = .pi / 9   // 20°
+
+    static func pickupColor(for kind: PowerUpKind) -> (CGFloat, CGFloat, CGFloat) {
+        switch kind {
+        case .widePaddle: return (1.00, 0.843, 0.000)   // gold
+        case .shield:     return (0.25, 0.55, 1.00)     // blue
+        case .stickyBall: return (0.30, 0.85, 0.40)     // green
+        case .multiBall:  return (1.00, 0.549, 0.000)   // orange
+        }
+    }
+
+    static func pickupSymbol(for kind: PowerUpKind) -> String {
+        switch kind {
+        case .widePaddle: return "arrow.left.and.right"
+        case .shield:     return "shield.fill"
+        case .stickyBall: return "hand.raised.fill"
+        case .multiBall:  return "3.circle.fill"
+        }
+    }
 }
