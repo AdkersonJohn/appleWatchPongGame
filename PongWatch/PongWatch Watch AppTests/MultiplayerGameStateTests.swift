@@ -563,5 +563,7 @@ final class MultiplayerGameStateTests: XCTestCase {
 
 final class RecordingHapticPlayer: HapticPlayer {
     var clickCount = 0
+    var successCount = 0
     func playClick() { clickCount += 1 }
+    func playSuccess() { successCount += 1 }
 }
