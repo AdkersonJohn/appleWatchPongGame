@@ -141,19 +141,23 @@ struct GameView: View {
             context.fill(Path(ellipseIn: rect), with: .color(color))
         }
 
-        // Power-up pickup
+        // Power-up pickup — distinct shape + color per kind, flashing to stand out.
+        // Canvas redraws every game tick, so wall-clock time drives the blink.
         if let pickup = state.powerUps.pickup {
             let c = GameConstants.pickupColor(for: pickup.kind)
             let center = CGPoint(x: pickup.position.x * size.width,
                                  y: pickup.position.y * size.height)
             let r = GameConstants.powerUpPickupRadius * size.width
             let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
-            context.fill(Path(ellipseIn: rect),
-                         with: .color(Color(red: c.0, green: c.1, blue: c.2)))
-            let symbol = context.resolve(
+            let t = Date().timeIntervalSinceReferenceDate
+            var flashCtx = context
+            flashCtx.opacity = 0.45 + 0.55 * (0.5 + 0.5 * sin(t * 14))  // ~2.2 Hz blink
+            flashCtx.fill(pickupShape(for: pickup.kind, center: center, r: r),
+                          with: .color(Color(red: c.0, green: c.1, blue: c.2)))
+            let symbol = flashCtx.resolve(
                 Image(systemName: GameConstants.pickupSymbol(for: pickup.kind))
             )
-            context.draw(symbol, in: rect.insetBy(dx: r * 0.45, dy: r * 0.45))
+            flashCtx.draw(symbol, in: rect.insetBy(dx: r * 0.45, dy: r * 0.45))
         }
 
         // Shields — thin line just behind each protected paddle
@@ -164,6 +168,32 @@ struct GameView: View {
         if state.powerUps.hasShield(for: .top) {
             let rect = CGRect(x: 0, y: 0, width: size.width, height: 3)
             context.fill(Path(rect), with: .color(.blue))
+        }
+    }
+
+    /// Per-kind silhouette: wide capsule / rounded square / circle / diamond,
+    /// so kinds read at a glance even before the color registers.
+    private func pickupShape(for kind: PowerUpKind, center: CGPoint, r: CGFloat) -> Path {
+        switch kind {
+        case .widePaddle:
+            return Path(roundedRect: CGRect(x: center.x - r * 1.4, y: center.y - r * 0.65,
+                                            width: r * 2.8, height: r * 1.3),
+                        cornerRadius: r * 0.65)
+        case .shield:
+            return Path(roundedRect: CGRect(x: center.x - r, y: center.y - r,
+                                            width: r * 2, height: r * 2),
+                        cornerRadius: r * 0.3)
+        case .stickyBall:
+            return Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r,
+                                          width: r * 2, height: r * 2))
+        case .multiBall:
+            var p = Path()
+            p.move(to: CGPoint(x: center.x, y: center.y - r * 1.25))
+            p.addLine(to: CGPoint(x: center.x + r * 1.25, y: center.y))
+            p.addLine(to: CGPoint(x: center.x, y: center.y + r * 1.25))
+            p.addLine(to: CGPoint(x: center.x - r * 1.25, y: center.y))
+            p.closeSubpath()
+            return p
         }
     }
 
