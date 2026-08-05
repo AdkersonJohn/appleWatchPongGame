@@ -396,6 +396,7 @@ final class GameState: ObservableObject {
     }
 
     private func tickPowerUps(dt: CGFloat) {
+        powerUps.alwaysDriftToBottom = topSideIsAI
         guard let event = powerUps.tick(dt: dt,
                                         bottomPaddleX: playerPaddleX,
                                         topPaddleX: aiPaddleX) else { return }

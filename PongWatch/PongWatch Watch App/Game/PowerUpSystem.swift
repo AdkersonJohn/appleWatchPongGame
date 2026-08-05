@@ -48,6 +48,8 @@ struct PowerUpSystem {
     private(set) var bottom = SidePowerUps()
     private(set) var top = SidePowerUps()
     private(set) var timeUntilNextSpawn: CGFloat = 0
+    /// Single-player: every pickup drifts to the human (bottom) paddle.
+    var alwaysDriftToBottom: Bool = false
     private var rng: SeededRandomNumberGenerator
 
     init(seed: UInt64 = UInt64.random(in: .min ... .max)) {
@@ -160,7 +162,7 @@ struct PowerUpSystem {
 
     private mutating func spawnPickup() {
         let kind = PowerUpKind.allCases.randomElement(using: &rng)!
-        let sign: CGFloat = Bool.random(using: &rng) ? 1 : -1
+        let sign: CGFloat = alwaysDriftToBottom ? 1 : (Bool.random(using: &rng) ? 1 : -1)
         pickup = Pickup(kind: kind, position: CGPoint(x: 0.5, y: 0.5), driftSign: sign)
     }
 }

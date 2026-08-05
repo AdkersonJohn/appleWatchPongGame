@@ -23,6 +23,18 @@ enum GameConstants {
     // Countdown shown before each new ball launch (3…2…1 then go)
     static let countdownStart: Int = 3
 
+    // Digital Crown. ponytail: feel-tune on hardware.
+    // crownGain 1.0 = one full crown rotation sweeps the full width.
+    // crownSmoothingTau: low-pass time constant — absorbs hand tremor and
+    // crown quantization; stop still completes in ~2 frames.
+    static let crownGain: CGFloat = 1.0
+    static let crownSmoothingTau: CGFloat = 0.04
+    // One tick per this much paddle travel; min interval caps fast-spin tick
+    // rate at ~7/s — skin stops resolving individual taps past ~8-10 Hz, so a
+    // higher cap reads as buzz even though the clicks are mechanically spaced.
+    static let crownHapticStep: CGFloat = 0.10
+    static let crownHapticMinInterval: Double = 0.14
+
     // Scoring burst
     static let particlesPerBurst: Int = 20
     static let particleMinSpeed: CGFloat = 0.4
