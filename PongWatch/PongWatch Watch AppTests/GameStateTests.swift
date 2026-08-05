@@ -8,6 +8,25 @@ final class FakeHapticPlayer: HapticPlayer {
     func playSuccess() { successCount += 1 }
 }
 
+final class CrownSmootherTests: XCTestCase {
+    func test_convergesAndSnapsToTargetQuickly() {
+        var s = CrownSmoother()
+        s.target = 0.8
+        // 0.2s of 60fps frames must fully close even a large 0.3 stop-gap —
+        // real stop-gaps are far smaller, so a stop reads as instant.
+        for _ in 0..<12 { _ = s.advance(dt: 1.0 / 60.0) }
+        XCTAssertEqual(s.displayed, 0.8, "smoother must snap, not glide")
+    }
+
+    func test_singleFrameOnlyPartiallyFollows() {
+        var s = CrownSmoother()
+        s.target = 1.0
+        let x = s.advance(dt: 1.0 / 60.0)
+        XCTAssertGreaterThan(x, 0.5)
+        XCTAssertLessThan(x, 1.0, "one frame should low-pass, not teleport")
+    }
+}
+
 final class GameStateTests: XCTestCase {
     func test_resetPutsGameInStartPhaseAndCenteredBall() {
         let state = GameState()
