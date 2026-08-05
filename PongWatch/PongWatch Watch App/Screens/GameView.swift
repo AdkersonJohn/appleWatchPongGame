@@ -1,9 +1,29 @@
 import SwiftUI
+import WatchKit
+
+/// Tiny low-pass on the raw crown signal: absorbs hand tremor and hardware
+/// quantization (which the old bounded crown API filtered for us) without the
+/// flick-inertia that API added. tau is small enough that a stop completes in
+/// ~2 frames — reads as instant.
+struct CrownSmoother {
+    var displayed: CGFloat = 0.5
+    var target: CGFloat = 0.5
+    mutating func advance(dt: CGFloat, tau: CGFloat = GameConstants.crownSmoothingTau) -> CGFloat {
+        displayed += (target - displayed) * (1 - exp(-dt / tau))
+        if abs(target - displayed) < 0.005 { displayed = target }
+        return displayed
+    }
+}
 
 struct GameView: View {
     @ObservedObject var state: GameState
     @Environment(\.scenePhase) private var scenePhase
-    @State private var crownValue: Double = 0.5
+    /// Raw accumulated crown rotations (unbounded — deltas drive the paddle).
+    @State private var crownValue: Double = 0
+    @State private var smoother = CrownSmoother()
+    /// Paddle travel accumulated since the last haptic click.
+    @State private var hapticTravel: CGFloat = 0
+    @State private var lastHapticTime: TimeInterval = 0
     /// Optional (myScore, opponentScore) overlay for multiplayer mode.
     var multiplayerScores: (mine: Int, opp: Int)? = nil
     /// Closure called every render tick (for MP host physics + snapshot send).
@@ -48,20 +68,24 @@ struct GameView: View {
         .onTapGesture {
             if let onTap { onTap() } else { state.tapRelease(side: .bottom) }
         }
-        .digitalCrownRotation(
-            $crownValue,
-            from: 0.0,
-            through: 1.0,
-            by: 0.005,
-            sensitivity: .medium,
-            isContinuous: false,
-            isHapticFeedbackEnabled: true
-        )
-        .onChange(of: crownValue) { _, newValue in
-            if let onCrownChange {
-                onCrownChange(CGFloat(newValue))
-            } else {
-                state.setPlayerPaddle(normalizedCrown: CGFloat(newValue))
+        // Raw unbounded crown: the paddle follows the crown's physical delta
+        // 1:1 each frame and stops the instant the crown does — no SwiftUI
+        // flick-deceleration, no rubber-banding.
+        .digitalCrownRotation($crownValue)
+        .onChange(of: crownValue) { oldValue, newValue in
+            let before = smoother.target
+            smoother.target = max(0, min(1, before + CGFloat(newValue - oldValue) * GameConstants.crownGain))
+            // Distance-based click instead of system detents: one tick per
+            // crownHapticStep of paddle travel, so tick rate is linear in
+            // crown speed. The min-interval floor keeps fast spins as a crisp
+            // bounded click train — overlapping clicks read as noise.
+            hapticTravel += abs(smoother.target - before)
+            let now = Date().timeIntervalSinceReferenceDate
+            if hapticTravel >= GameConstants.crownHapticStep,
+               now - lastHapticTime >= GameConstants.crownHapticMinInterval {
+                hapticTravel = 0
+                lastHapticTime = now
+                WKInterfaceDevice.current().play(.click)
             }
         }
         .task(id: scenePhase) {
@@ -82,6 +106,16 @@ struct GameView: View {
                 // skip it so the ball doesn't teleport.
                 if dt > 0.1 { continue }
                 let clampedDt = min(dt, 0.05)
+                // Smoothed paddle position is emitted from the render tick so
+                // the low-pass filter advances on frame time, not crown events.
+                if smoother.displayed != smoother.target {
+                    let x = smoother.advance(dt: clampedDt)
+                    if let onCrownChange {
+                        onCrownChange(x)
+                    } else {
+                        state.setPlayerPaddle(normalizedCrown: x)
+                    }
+                }
                 if let onTick {
                     onTick(clampedDt)
                 } else {
