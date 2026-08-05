@@ -45,6 +45,19 @@ final class PowerUpSystemTests: XCTestCase {
         XCTAssertGreaterThan(sys.timeUntilNextSpawn, 0)
     }
 
+    func test_alwaysDriftToBottomForcesEverySpawnTowardPlayer() {
+        for seed: UInt64 in 1...20 {
+            var sys = PowerUpSystem(seed: seed)
+            sys.alwaysDriftToBottom = true
+            var elapsed: CGFloat = 0
+            while sys.pickup == nil && elapsed < GameConstants.powerUpSpawnIntervalMax + 0.2 {
+                _ = sys.tick(dt: 0.1, bottomPaddleX: 0.05, topPaddleX: 0.05)
+                elapsed += 0.1
+            }
+            XCTAssertEqual(sys.pickup?.targetSide, .bottom, "seed \(seed) drifted to top")
+        }
+    }
+
     func test_sameSeedProducesSameSpawn() {
         var a = PowerUpSystem(seed: 99), b = PowerUpSystem(seed: 99)
         tickThrough(&a, seconds: GameConstants.powerUpSpawnIntervalMax + 0.2)
