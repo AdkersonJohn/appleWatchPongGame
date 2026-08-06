@@ -27,6 +27,41 @@ final class CrownSmootherTests: XCTestCase {
     }
 }
 
+final class CrownHapticsTests: XCTestCase {
+    /// Runs `seconds` of 60fps crown motion at a constant paddle speed and
+    /// returns how many haptic ticks fired.
+    private func ticks(paddleSpeed: CGFloat, seconds: Double) -> Int {
+        var h = CrownHaptics()
+        let dt = 1.0 / 60.0
+        var count = 0
+        for i in 0..<Int(seconds / dt) {
+            if h.shouldTick(travelDelta: paddleSpeed * CGFloat(dt), now: Double(i) * dt) { count += 1 }
+        }
+        return count
+    }
+
+    // Long windows so ±1 tick of frame-boundary rounding stays negligible.
+    func test_tickRateIsLinearInSpeedBelowTheCap() {
+        // 0.2/s → 2 ticks/s and 0.4/s → 4 ticks/s, both under the ~7/s ceiling.
+        let slow = Double(ticks(paddleSpeed: 0.2, seconds: 20))
+        let fast = Double(ticks(paddleSpeed: 0.4, seconds: 20))
+        XCTAssertEqual(slow, 40, accuracy: 4, "expected ~travel/step ticks")
+        XCTAssertEqual(fast, slow * 2, accuracy: slow * 0.2, "rate must scale with speed")
+    }
+
+    func test_fastSpinIsCappedSoTicksStayDiscernible() {
+        // 5.0/s would be 50 ticks/s uncapped — must clamp to 1/minInterval.
+        let ceiling = 20.0 / GameConstants.crownHapticMinInterval
+        let n = Double(ticks(paddleSpeed: 5.0, seconds: 20))
+        XCTAssertLessThanOrEqual(n, ceiling, "fast spin exceeded the rate cap")
+        XCTAssertGreaterThan(n, ceiling * 0.85, "cap should still fire near full rate")
+    }
+
+    func test_noTicksWhenStationary() {
+        XCTAssertEqual(ticks(paddleSpeed: 0, seconds: 2), 0)
+    }
+}
+
 final class GameStateTests: XCTestCase {
     func test_resetPutsGameInStartPhaseAndCenteredBall() {
         let state = GameState()
