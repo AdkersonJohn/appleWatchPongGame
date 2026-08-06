@@ -15,15 +15,31 @@ struct CrownSmoother {
     }
 }
 
+/// Decides when a crown haptic tick fires. One tick per `step` of paddle
+/// travel makes the rate linear in crown speed; `minInterval` caps that rate
+/// so fast spins stay a train of discernible taps instead of a buzz.
+struct CrownHaptics {
+    private var travel: CGFloat = 0
+    private var lastTick: TimeInterval = -.greatestFiniteMagnitude
+
+    mutating func shouldTick(travelDelta: CGFloat, now: TimeInterval,
+                             step: CGFloat = GameConstants.crownHapticStep,
+                             minInterval: Double = GameConstants.crownHapticMinInterval) -> Bool {
+        travel += abs(travelDelta)
+        guard travel >= step, now - lastTick >= minInterval else { return false }
+        travel = 0
+        lastTick = now
+        return true
+    }
+}
+
 struct GameView: View {
     @ObservedObject var state: GameState
     @Environment(\.scenePhase) private var scenePhase
     /// Raw accumulated crown rotations (unbounded — deltas drive the paddle).
     @State private var crownValue: Double = 0
     @State private var smoother = CrownSmoother()
-    /// Paddle travel accumulated since the last haptic click.
-    @State private var hapticTravel: CGFloat = 0
-    @State private var lastHapticTime: TimeInterval = 0
+    @State private var haptics = CrownHaptics()
     /// Optional (myScore, opponentScore) overlay for multiplayer mode.
     var multiplayerScores: (mine: Int, opp: Int)? = nil
     /// Closure called every render tick (for MP host physics + snapshot send).
@@ -75,16 +91,9 @@ struct GameView: View {
         .onChange(of: crownValue) { oldValue, newValue in
             let before = smoother.target
             smoother.target = max(0, min(1, before + CGFloat(newValue - oldValue) * GameConstants.crownGain))
-            // Distance-based click instead of system detents: one tick per
-            // crownHapticStep of paddle travel, so tick rate is linear in
-            // crown speed. The min-interval floor keeps fast spins as a crisp
-            // bounded click train — overlapping clicks read as noise.
-            hapticTravel += abs(smoother.target - before)
-            let now = Date().timeIntervalSinceReferenceDate
-            if hapticTravel >= GameConstants.crownHapticStep,
-               now - lastHapticTime >= GameConstants.crownHapticMinInterval {
-                hapticTravel = 0
-                lastHapticTime = now
+            // Distance-based clicks instead of system detents; see CrownHaptics.
+            if haptics.shouldTick(travelDelta: smoother.target - before,
+                                  now: Date().timeIntervalSinceReferenceDate) {
                 WKInterfaceDevice.current().play(.click)
             }
         }
