@@ -8,22 +8,49 @@ final class FakeHapticPlayer: HapticPlayer {
     func playSuccess() { successCount += 1 }
 }
 
-final class CrownSmootherTests: XCTestCase {
-    func test_convergesAndSnapsToTargetQuickly() {
-        var s = CrownSmoother()
-        s.target = 0.8
-        // 0.2s of 60fps frames must fully close even a large 0.3 stop-gap —
-        // real stop-gaps are far smaller, so a stop reads as instant.
-        for _ in 0..<12 { _ = s.advance(dt: 1.0 / 60.0) }
-        XCTAssertEqual(s.displayed, 0.8, "smoother must snap, not glide")
+final class CrownIntegratorTests: XCTestCase {
+    /// Spins at `rotationsPerSecond` for `seconds`, keeping events fresh.
+    private func spin(_ c: inout CrownIntegrator, rotationsPerSecond: Double, seconds: Double) {
+        let dt = 1.0 / 60.0
+        c.velocity = rotationsPerSecond
+        for i in 0..<Int(seconds / dt) {
+            let now = Double(i) * dt
+            c.lastEventAt = now
+            _ = c.advance(dt: CGFloat(dt), now: now)
+        }
     }
 
-    func test_singleFrameOnlyPartiallyFollows() {
-        var s = CrownSmoother()
-        s.target = 1.0
-        let x = s.advance(dt: 1.0 / 60.0)
-        XCTAssertGreaterThan(x, 0.5)
-        XCTAssertLessThan(x, 1.0, "one frame should low-pass, not teleport")
+    func test_slowRotationMovesPaddleSlowlyAndProportionally() {
+        var slow = CrownIntegrator(), fast = CrownIntegrator()
+        spin(&slow, rotationsPerSecond: 0.1, seconds: 1)   // 1/10 turn
+        spin(&fast, rotationsPerSecond: 0.2, seconds: 1)   // 1/5 turn
+        XCTAssertEqual(slow.position - 0.5, 0.1, accuracy: 0.01, "1/10 turn ≈ 1/10 width")
+        XCTAssertEqual(fast.position - 0.5, 0.2, accuracy: 0.01, "travel must scale with rotation")
+    }
+
+    func test_stopsImmediatelyWhenCrownGoesIdle() {
+        var c = CrownIntegrator()
+        spin(&c, rotationsPerSecond: 1.0, seconds: 0.2)
+        let atStop = c.position
+        c.velocity = 0                                      // onIdle
+        for i in 0..<60 { _ = c.advance(dt: 1.0 / 60.0, now: 0.2 + Double(i) / 60.0) }
+        XCTAssertEqual(c.position, atStop, "paddle must not coast after the crown stops")
+    }
+
+    func test_staleVelocityStopsThePaddleWhenIdleIsLate() {
+        var c = CrownIntegrator()
+        c.velocity = 1.0
+        c.lastEventAt = 0
+        _ = c.advance(dt: 1.0 / 60.0, now: 0.5)             // no events for 0.5s
+        XCTAssertEqual(c.position, 0.5, "stale velocity must not keep moving the paddle")
+    }
+
+    func test_positionStaysWithinTheScreen() {
+        var c = CrownIntegrator()
+        spin(&c, rotationsPerSecond: 5.0, seconds: 3)
+        XCTAssertEqual(c.position, 1.0)
+        spin(&c, rotationsPerSecond: -5.0, seconds: 3)
+        XCTAssertEqual(c.position, 0.0)
     }
 }
 
