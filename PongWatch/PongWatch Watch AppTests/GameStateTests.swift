@@ -300,6 +300,52 @@ final class GameStateTests: XCTestCase {
         XCTAssertLessThanOrEqual(state.aiPaddleX - 0.3, maxMove + 0.0001)
     }
 
+    func test_aiSpeedRisesWithScoreThenCaps() {
+        let base = GameConstants.aiMaxSpeed
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 0), base, accuracy: 0.0001)
+        // Each point adds a fixed slice of the base speed.
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 5),
+                       base * (1 + 5 * GameConstants.aiSpeedIncreasePerPoint),
+                       accuracy: 0.0001)
+        XCTAssertGreaterThan(GameConstants.aiSpeed(playerScore: 3),
+                             GameConstants.aiSpeed(playerScore: 2))
+        // …but never past the cap, however long the run gets.
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 500),
+                       base * GameConstants.aiSpeedFactorCap, accuracy: 0.0001)
+    }
+
+    func test_aiPaddleChasesFasterAfterPlayerScores() {
+        func aiTravel(afterScore score: Int) -> CGFloat {
+            let state = GameState()
+            state.phase = .playing
+            state.score = score
+            state.aiPaddleX = 0.1
+            // Ball parked far to the right so the AI is always speed-limited.
+            state.ball = Ball(position: CGPoint(x: 0.9, y: 0.3), velocity: .zero)
+            state.update(dt: 0.1)
+            return state.aiPaddleX - 0.1
+        }
+
+        XCTAssertGreaterThan(aiTravel(afterScore: 8), aiTravel(afterScore: 0),
+                             "AI should cover more ground per frame once the player has scored")
+    }
+
+    func test_multiplayerTopPaddleIgnoresTheAIRamp() {
+        // Top side is a human peer — scoring must not speed its paddle up.
+        func travel(score: Int) -> CGFloat {
+            let state = GameState()
+            state.phase = .playing
+            state.topSideIsAI = false
+            state.score = score
+            state.aiPaddleX = 0.1
+            state.ball = Ball(position: CGPoint(x: 0.9, y: 0.3), velocity: .zero)
+            state.update(dt: 0.1)
+            return state.aiPaddleX - 0.1
+        }
+
+        XCTAssertEqual(travel(score: 12), travel(score: 0), accuracy: 0.0001)
+    }
+
     func test_aiPaddleStaysInBounds() {
         let state = GameState()
         state.phase = .playing
