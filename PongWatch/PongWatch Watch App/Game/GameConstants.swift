@@ -20,6 +20,20 @@ enum GameConstants {
     // AI paddle max horizontal speed (normalized units per second)
     static let aiMaxSpeed: CGFloat = 0.31
 
+    // Every point scored against the AI makes it react faster, by this fraction
+    // of its base speed, until it tops out at `aiSpeedFactorCap` × base — the
+    // cap is what keeps a long run from turning into an unbeatable wall.
+    // ponytail: linear ramp; swap for a curve if the late game feels off.
+    static let aiSpeedIncreasePerPoint: CGFloat = 0.06
+    static let aiSpeedFactorCap: CGFloat = 2.0
+
+    /// AI paddle speed after the player has scored `playerScore` times.
+    static func aiSpeed(playerScore: Int) -> CGFloat {
+        let factor = min(aiSpeedFactorCap,
+                         1 + aiSpeedIncreasePerPoint * CGFloat(max(0, playerScore)))
+        return aiMaxSpeed * factor
+    }
+
     // Countdown shown before each new ball launch (3…2…1 then go)
     static let countdownStart: Int = 3
 
