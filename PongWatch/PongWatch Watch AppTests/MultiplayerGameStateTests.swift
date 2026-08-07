@@ -633,23 +633,80 @@ private func makeSnapshot(
 // MARK: - Peer self-identification
 
 final class PeerIdentityTests: XCTestCase {
+    private let mine = "AAAA-1111"
+    private let myEndpoint = "John's Apple Watch._pongwatch._tcp.local."
+    private let theirEndpoint = "Tarique's Apple Watch._pongwatch._tcp.local."
+
     /// The bug two real watches hit: both report the same device name, so a
     /// name-based self-check hid each from the other and the lobby stayed empty.
     func test_twoWatchesSharingADisplayNameStillSeeEachOther() {
-        let mine = "AAAA-1111"
-        let theirs = "BBBB-2222"
-        XCTAssertFalse(PeerIdentity.isSelf(txtID: theirs, myID: mine),
+        XCTAssertFalse(PeerIdentity.isSelf(txtID: "BBBB-2222", endpointID: theirEndpoint,
+                                           myID: mine, myEndpointID: myEndpoint),
                        "A different instance must never be treated as self, whatever it's called")
     }
 
     func test_ownAdvertisementIsHidden() {
-        let mine = "AAAA-1111"
-        XCTAssertTrue(PeerIdentity.isSelf(txtID: mine, myID: mine))
+        XCTAssertTrue(PeerIdentity.isSelf(txtID: mine, endpointID: myEndpoint,
+                                          myID: mine, myEndpointID: myEndpoint))
+    }
+
+    /// A result can show up before its TXT record resolves — that happened on
+    /// the real watches at t=2.5s. Without the endpoint fallback our own
+    /// unresolved service lists itself as an opponent.
+    func test_ownUnresolvedAdvertisementIsStillHidden() {
+        XCTAssertTrue(PeerIdentity.isSelf(txtID: nil, endpointID: myEndpoint,
+                                          myID: mine, myEndpointID: myEndpoint))
     }
 
     func test_peerWithoutAnIDIsShownRatherThanHidden() {
-        // An older build advertises no id. Showing a possible duplicate beats
-        // silently hiding a real opponent.
-        XCTAssertFalse(PeerIdentity.isSelf(txtID: nil, myID: "AAAA-1111"))
+        // Showing a possible duplicate beats silently hiding a real opponent.
+        XCTAssertFalse(PeerIdentity.isSelf(txtID: nil, endpointID: theirEndpoint,
+                                           myID: mine, myEndpointID: myEndpoint))
+    }
+}
+
+// MARK: - Peer list stability
+
+final class PeerCacheTests: XCTestCase {
+    private func peer(_ id: String, _ name: String = "Tarique's Apple Watch") -> DiscoveredPeer {
+        DiscoveredPeer(id: id, displayName: name, endpoint: .service(
+            name: id, type: "_pongwatch._tcp", domain: "local.", interface: nil))
+    }
+
+    /// The real failure: a peer resolved at t=0.4s and had vanished from the
+    /// browse set by t=3.6s, wiping the row out from under the player's tap.
+    func test_peerSurvivesABrowseCallbackThatDropsIt() {
+        var cache = PeerCache()
+        let t0 = Date()
+        XCTAssertEqual(cache.merge([peer("A")], now: t0).count, 1)
+        let shown = cache.merge([], now: t0.addingTimeInterval(3.2))
+        XCTAssertEqual(shown.map(\.id), ["A"], "A flapping peer must stay tappable")
+    }
+
+    func test_peerIsDroppedOnceTheGraceWindowExpires() {
+        var cache = PeerCache()
+        let t0 = Date()
+        _ = cache.merge([peer("A")], now: t0)
+        let late = t0.addingTimeInterval(PeerCache.graceSeconds + 1)
+        XCTAssertTrue(cache.merge([], now: late).isEmpty)
+    }
+
+    func test_reappearingPeerRefreshesItsDeadlineWithoutDuplicating() {
+        var cache = PeerCache()
+        let t0 = Date()
+        _ = cache.merge([peer("A")], now: t0)
+        _ = cache.merge([], now: t0.addingTimeInterval(5))
+        _ = cache.merge([peer("A")], now: t0.addingTimeInterval(9))
+        let shown = cache.merge([], now: t0.addingTimeInterval(15))
+        XCTAssertEqual(shown.map(\.id), ["A"], "seen again at t=9, so still inside the window at t=15")
+    }
+
+    func test_orderIsStableAcrossCallbacks() {
+        var cache = PeerCache()
+        let t0 = Date()
+        let first = cache.merge([peer("B", "Bea"), peer("A", "Al")], now: t0)
+        let second = cache.merge([peer("A", "Al"), peer("B", "Bea")], now: t0.addingTimeInterval(1))
+        XCTAssertEqual(first.map(\.id), ["A", "B"])
+        XCTAssertEqual(second.map(\.id), first.map(\.id), "rows must not shuffle between callbacks")
     }
 }
