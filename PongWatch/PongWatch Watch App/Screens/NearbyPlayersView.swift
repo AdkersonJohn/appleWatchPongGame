@@ -3,6 +3,8 @@ import SwiftUI
 struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
     @ObservedObject var service: Service
     let onBack: () -> Void
+    @ObservedObject private var diag = MPDiag.shared
+    @State private var showDiagnostics = false
 
     var body: some View {
         ZStack {
@@ -43,14 +45,22 @@ struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
                         }
                     }
                 }
-                Button("Back", action: onBack)
-                    .foregroundColor(.white.opacity(0.7))
-                    .font(.footnote)
+                HStack(spacing: 12) {
+                    Button("Back", action: onBack)
+                        .foregroundColor(.white.opacity(0.7))
+                    Button("Diagnostics") { showDiagnostics = true }
+                        .foregroundColor(.blue.opacity(0.8))
+                }
+                .font(.footnote)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
         }
+        .sheet(isPresented: $showDiagnostics) {
+            MPDiagnosticsView(lines: diag.lines)
+        }
         .onAppear {
+            MPDiag.shared.reset()
             service.startAdvertising()
             service.startBrowsing()
         }
