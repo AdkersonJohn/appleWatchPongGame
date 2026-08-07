@@ -629,3 +629,27 @@ private func makeSnapshot(
                  hostEffects: hostEffects, clientEffects: clientEffects,
                  pickup: pickup, pickupCollected: pickupCollected, stuckSide: stuckSide, tickSeq: tickSeq)
 }
+
+// MARK: - Peer self-identification
+
+final class PeerIdentityTests: XCTestCase {
+    /// The bug two real watches hit: both report the same device name, so a
+    /// name-based self-check hid each from the other and the lobby stayed empty.
+    func test_twoWatchesSharingADisplayNameStillSeeEachOther() {
+        let mine = "AAAA-1111"
+        let theirs = "BBBB-2222"
+        XCTAssertFalse(PeerIdentity.isSelf(txtID: theirs, myID: mine),
+                       "A different instance must never be treated as self, whatever it's called")
+    }
+
+    func test_ownAdvertisementIsHidden() {
+        let mine = "AAAA-1111"
+        XCTAssertTrue(PeerIdentity.isSelf(txtID: mine, myID: mine))
+    }
+
+    func test_peerWithoutAnIDIsShownRatherThanHidden() {
+        // An older build advertises no id. Showing a possible duplicate beats
+        // silently hiding a real opponent.
+        XCTAssertFalse(PeerIdentity.isSelf(txtID: nil, myID: "AAAA-1111"))
+    }
+}
