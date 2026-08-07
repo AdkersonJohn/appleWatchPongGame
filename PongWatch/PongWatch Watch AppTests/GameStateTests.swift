@@ -8,22 +8,84 @@ final class FakeHapticPlayer: HapticPlayer {
     func playSuccess() { successCount += 1 }
 }
 
-final class CrownSmootherTests: XCTestCase {
-    func test_convergesAndSnapsToTargetQuickly() {
-        var s = CrownSmoother()
-        s.target = 0.8
-        // 0.2s of 60fps frames must fully close even a large 0.3 stop-gap —
-        // real stop-gaps are far smaller, so a stop reads as instant.
-        for _ in 0..<12 { _ = s.advance(dt: 1.0 / 60.0) }
-        XCTAssertEqual(s.displayed, 0.8, "smoother must snap, not glide")
+final class CrownIntegratorTests: XCTestCase {
+    /// Spins at `rotationsPerSecond` for `seconds`, keeping events fresh.
+    private func spin(_ c: inout CrownIntegrator, rotationsPerSecond: Double, seconds: Double) {
+        let dt = 1.0 / 60.0
+        c.velocity = rotationsPerSecond
+        for i in 0..<Int(seconds / dt) {
+            let now = Double(i) * dt
+            c.lastEventAt = now
+            _ = c.advance(dt: CGFloat(dt), now: now)
+        }
     }
 
-    func test_singleFrameOnlyPartiallyFollows() {
-        var s = CrownSmoother()
-        s.target = 1.0
-        let x = s.advance(dt: 1.0 / 60.0)
-        XCTAssertGreaterThan(x, 0.5)
-        XCTAssertLessThan(x, 1.0, "one frame should low-pass, not teleport")
+    func test_slowRotationMovesPaddleSlowlyAndProportionally() {
+        var slow = CrownIntegrator(), fast = CrownIntegrator()
+        spin(&slow, rotationsPerSecond: 0.1, seconds: 1)   // 1/10 turn
+        spin(&fast, rotationsPerSecond: 0.2, seconds: 1)   // 1/5 turn
+        XCTAssertEqual(slow.position - 0.5, 0.1, accuracy: 0.01, "1/10 turn ≈ 1/10 width")
+        XCTAssertEqual(fast.position - 0.5, 0.2, accuracy: 0.01, "travel must scale with rotation")
+    }
+
+    func test_stopsImmediatelyWhenCrownGoesIdle() {
+        var c = CrownIntegrator()
+        spin(&c, rotationsPerSecond: 1.0, seconds: 0.2)
+        let atStop = c.position
+        c.velocity = 0                                      // onIdle
+        for i in 0..<60 { _ = c.advance(dt: 1.0 / 60.0, now: 0.2 + Double(i) / 60.0) }
+        XCTAssertEqual(c.position, atStop, "paddle must not coast after the crown stops")
+    }
+
+    func test_staleVelocityStopsThePaddleWhenIdleIsLate() {
+        var c = CrownIntegrator()
+        c.velocity = 1.0
+        c.lastEventAt = 0
+        _ = c.advance(dt: 1.0 / 60.0, now: 0.5)             // no events for 0.5s
+        XCTAssertEqual(c.position, 0.5, "stale velocity must not keep moving the paddle")
+    }
+
+    func test_positionStaysWithinTheScreen() {
+        var c = CrownIntegrator()
+        spin(&c, rotationsPerSecond: 5.0, seconds: 3)
+        XCTAssertEqual(c.position, 1.0)
+        spin(&c, rotationsPerSecond: -5.0, seconds: 3)
+        XCTAssertEqual(c.position, 0.0)
+    }
+}
+
+final class CrownHapticsTests: XCTestCase {
+    /// Runs `seconds` of 60fps crown motion at a constant paddle speed and
+    /// returns how many haptic ticks fired.
+    private func ticks(paddleSpeed: CGFloat, seconds: Double) -> Int {
+        var h = CrownHaptics()
+        let dt = 1.0 / 60.0
+        var count = 0
+        for i in 0..<Int(seconds / dt) {
+            if h.shouldTick(travelDelta: paddleSpeed * CGFloat(dt), now: Double(i) * dt) { count += 1 }
+        }
+        return count
+    }
+
+    // Long windows so ±1 tick of frame-boundary rounding stays negligible.
+    func test_tickRateIsLinearInSpeedBelowTheCap() {
+        // 0.2/s → 2 ticks/s and 0.4/s → 4 ticks/s, both under the ~7/s ceiling.
+        let slow = Double(ticks(paddleSpeed: 0.2, seconds: 20))
+        let fast = Double(ticks(paddleSpeed: 0.4, seconds: 20))
+        XCTAssertEqual(slow, 40, accuracy: 4, "expected ~travel/step ticks")
+        XCTAssertEqual(fast, slow * 2, accuracy: slow * 0.2, "rate must scale with speed")
+    }
+
+    func test_fastSpinIsCappedSoTicksStayDiscernible() {
+        // 5.0/s would be 50 ticks/s uncapped — must clamp to 1/minInterval.
+        let ceiling = 20.0 / GameConstants.crownHapticMinInterval
+        let n = Double(ticks(paddleSpeed: 5.0, seconds: 20))
+        XCTAssertLessThanOrEqual(n, ceiling, "fast spin exceeded the rate cap")
+        XCTAssertGreaterThan(n, ceiling * 0.85, "cap should still fire near full rate")
+    }
+
+    func test_noTicksWhenStationary() {
+        XCTAssertEqual(ticks(paddleSpeed: 0, seconds: 2), 0)
     }
 }
 
@@ -236,6 +298,52 @@ final class GameStateTests: XCTestCase {
         // And it shouldn't teleport — capped by aiMaxSpeed * dt
         let maxMove = GameConstants.aiMaxSpeed * 0.1
         XCTAssertLessThanOrEqual(state.aiPaddleX - 0.3, maxMove + 0.0001)
+    }
+
+    func test_aiSpeedRisesWithScoreThenCaps() {
+        let base = GameConstants.aiMaxSpeed
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 0), base, accuracy: 0.0001)
+        // Each point adds a fixed slice of the base speed.
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 5),
+                       base * (1 + 5 * GameConstants.aiSpeedIncreasePerPoint),
+                       accuracy: 0.0001)
+        XCTAssertGreaterThan(GameConstants.aiSpeed(playerScore: 3),
+                             GameConstants.aiSpeed(playerScore: 2))
+        // …but never past the cap, however long the run gets.
+        XCTAssertEqual(GameConstants.aiSpeed(playerScore: 500),
+                       base * GameConstants.aiSpeedFactorCap, accuracy: 0.0001)
+    }
+
+    func test_aiPaddleChasesFasterAfterPlayerScores() {
+        func aiTravel(afterScore score: Int) -> CGFloat {
+            let state = GameState()
+            state.phase = .playing
+            state.score = score
+            state.aiPaddleX = 0.1
+            // Ball parked far to the right so the AI is always speed-limited.
+            state.ball = Ball(position: CGPoint(x: 0.9, y: 0.3), velocity: .zero)
+            state.update(dt: 0.1)
+            return state.aiPaddleX - 0.1
+        }
+
+        XCTAssertGreaterThan(aiTravel(afterScore: 8), aiTravel(afterScore: 0),
+                             "AI should cover more ground per frame once the player has scored")
+    }
+
+    func test_multiplayerTopPaddleIgnoresTheAIRamp() {
+        // Top side is a human peer — scoring must not speed its paddle up.
+        func travel(score: Int) -> CGFloat {
+            let state = GameState()
+            state.phase = .playing
+            state.topSideIsAI = false
+            state.score = score
+            state.aiPaddleX = 0.1
+            state.ball = Ball(position: CGPoint(x: 0.9, y: 0.3), velocity: .zero)
+            state.update(dt: 0.1)
+            return state.aiPaddleX - 0.1
+        }
+
+        XCTAssertEqual(travel(score: 12), travel(score: 0), accuracy: 0.0001)
     }
 
     func test_aiPaddleStaysInBounds() {

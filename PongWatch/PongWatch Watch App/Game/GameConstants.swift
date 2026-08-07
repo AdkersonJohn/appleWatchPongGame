@@ -20,15 +20,31 @@ enum GameConstants {
     // AI paddle max horizontal speed (normalized units per second)
     static let aiMaxSpeed: CGFloat = 0.31
 
+    // Every point scored against the AI makes it react faster, by this fraction
+    // of its base speed, until it tops out at `aiSpeedFactorCap` × base — the
+    // cap is what keeps a long run from turning into an unbeatable wall.
+    // ponytail: linear ramp; swap for a curve if the late game feels off.
+    static let aiSpeedIncreasePerPoint: CGFloat = 0.06
+    static let aiSpeedFactorCap: CGFloat = 2.0
+
+    /// AI paddle speed after the player has scored `playerScore` times.
+    static func aiSpeed(playerScore: Int) -> CGFloat {
+        let factor = min(aiSpeedFactorCap,
+                         1 + aiSpeedIncreasePerPoint * CGFloat(max(0, playerScore)))
+        return aiMaxSpeed * factor
+    }
+
     // Countdown shown before each new ball launch (3…2…1 then go)
     static let countdownStart: Int = 3
 
-    // Digital Crown. ponytail: feel-tune on hardware.
-    // crownGain 1.0 = one full crown rotation sweeps the full width.
-    // crownSmoothingTau: low-pass time constant — absorbs hand tremor and
-    // crown quantization; stop still completes in ~2 frames.
-    static let crownGain: CGFloat = 1.0
-    static let crownSmoothingTau: CGFloat = 0.04
+    // Digital Crown. Velocity arrives in rotations/second, so one full crown
+    // turn sweeps `crownWidthPerRotation` of the screen. The speed cap is a
+    // safety rail against a runaway velocity reading, not a normal limit; the
+    // staleness window stops the paddle if onIdle is late.
+    // ponytail: feel-tune on hardware.
+    static let crownWidthPerRotation: CGFloat = 1.0
+    static let crownMaxPaddleSpeed: CGFloat = 2.5
+    static let crownVelocityStaleAfter: Double = 0.12
     // One tick per this much paddle travel; min interval caps fast-spin tick
     // rate at ~7/s — skin stops resolving individual taps past ~8-10 Hz, so a
     // higher cap reads as buzz even though the clicks are mechanically spaced.

@@ -199,7 +199,11 @@ final class GameState: ObservableObject {
             .min { balls[$0].position.y < balls[$1].position.y }
             .map { balls[$0].position.x } ?? balls[0].position.x
         let aiDelta = targetX - aiPaddleX
-        let maxStep = GameConstants.aiMaxSpeed * dt
+        // Single-player only: the AI reacts faster the more the player has
+        // scored on it. In multiplayer the top paddle is a human, so leave it.
+        let aiSpeed = topSideIsAI ? GameConstants.aiSpeed(playerScore: score)
+                                  : GameConstants.aiMaxSpeed
+        let maxStep = aiSpeed * dt
         let step: CGFloat
         if abs(aiDelta) < maxStep {
             step = aiDelta
