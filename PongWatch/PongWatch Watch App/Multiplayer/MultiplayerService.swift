@@ -12,10 +12,42 @@ enum PeerIdentity {
     /// the display name: two stock watches report the same device name, so a
     /// name comparison makes each side classify the other as itself and hide
     /// it — leaving both players staring at an empty lobby.
-    static func isSelf(txtID: String?, myID: String) -> Bool {
-        guard let txtID else { return false }  // unknown identity: show it; a duplicate row beats an empty list
-        return txtID == myID
+    ///
+    /// A result can arrive before its TXT record resolves, which leaves no id
+    /// at all. Falling back to the endpoint we ourselves published keeps that
+    /// window from listing us as our own opponent.
+    static func isSelf(txtID: String?, endpointID: String, myID: String, myEndpointID: String?) -> Bool {
+        if let txtID { return txtID == myID }
+        guard let myEndpointID else { return false }  // unknown either way: show it; a duplicate row beats an empty list
+        return endpointID == myEndpointID
     }
+}
+
+/// Holds on to peers that have briefly dropped out of the browse results.
+///
+/// Bonjour over AWDL flaps: a watch sitting a foot away resolves, un-resolves,
+/// and vanishes from the result set within a couple of seconds, then comes
+/// back. Rebuilding the list from each callback makes the row disappear from
+/// under the player's finger mid-tap, which is what an empty lobby actually
+/// looked like on two real watches.
+struct PeerCache {
+    static let graceSeconds: TimeInterval = 10
+
+    private var seen: [String: (peer: DiscoveredPeer, at: Date)] = [:]
+
+    /// Returns the peers to show: everything seen within the grace window,
+    /// ordered stably so rows don't jump around between callbacks.
+    // ponytail: pruning only happens when the browser calls back, so the last
+    // peer can linger past the window. Add a timer if a stale row bites.
+    mutating func merge(_ fresh: [DiscoveredPeer], now: Date) -> [DiscoveredPeer] {
+        for peer in fresh { seen[peer.id] = (peer, now) }
+        seen = seen.filter { now.timeIntervalSince($0.value.at) < Self.graceSeconds }
+        return seen.values
+            .sorted { ($0.peer.displayName, $0.peer.id) < ($1.peer.displayName, $1.peer.id) }
+            .map(\.peer)
+    }
+
+    mutating func removeAll() { seen.removeAll() }
 }
 
 @MainActor
@@ -40,6 +72,10 @@ final class MultiplayerService: MultiplayerServiceProtocol {
 
     private var listener: NWListener?
     private var browser: NWBrowser?
+    /// The endpoint our own listener published, learned from the registration
+    /// handler. Used to recognise ourselves before the TXT record resolves.
+    private var myEndpointID: String?
+    private var peerCache = PeerCache()
     private var activeConnection: NWConnection?
     private var pendingIncoming: NWConnection?
     private var decoder = MessageFraming.Decoder()
@@ -62,7 +98,10 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         // Don't restart while a connection is live or being received — would
         // overwrite connectionState back to .discovering and tear down the link.
         if activeConnection != nil || pendingIncoming != nil { return }
-        stopAdvertising()
+        // Already published? Leave it alone. Tearing the listener down and
+        // rebuilding it withdraws the Bonjour service, and the lobby view's
+        // onAppear fires again every time the diagnostics sheet is dismissed.
+        if listener != nil { return }
         MPDiag.shared.event("advertise: starting")
         let params = NWParameters.tcp
         params.includePeerToPeer = true
@@ -92,10 +131,12 @@ final class MultiplayerService: MultiplayerServiceProtocol {
                     }
                 }
             }
-            l.serviceRegistrationUpdateHandler = { change in
+            l.serviceRegistrationUpdateHandler = { [weak self] change in
                 Task { @MainActor in
                     switch change {
-                    case .add(let endpoint):    MPDiag.shared.event("advertise: PUBLISHED \(endpoint)")
+                    case .add(let endpoint):
+                        self?.myEndpointID = self?.endpointID(endpoint)
+                        MPDiag.shared.event("advertise: PUBLISHED \(endpoint)")
                     case .remove(let endpoint): MPDiag.shared.event("advertise: withdrawn \(endpoint)")
                     @unknown default:           MPDiag.shared.event("advertise: unknown registration")
                     }
@@ -127,7 +168,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         // Don't restart browsing once we have a connection — pointless and
         // could re-fire result handlers in racy ways.
         if activeConnection != nil || pendingIncoming != nil { return }
-        stopBrowsing()
+        if browser != nil { return }
         MPDiag.shared.event("browse: starting")
         let params = NWParameters.tcp
         params.includePeerToPeer = true
@@ -164,33 +205,35 @@ final class MultiplayerService: MultiplayerServiceProtocol {
 
     private func updateDiscoveredPeers(from results: Set<NWBrowser.Result>) {
         MPDiag.shared.event("browse: \(results.count) raw result(s)")
-        var peers: [DiscoveredPeer] = []
+        var fresh: [DiscoveredPeer] = []
         for result in results {
             var txtID: String? = nil
-            var name: String
+            var txtName: String? = nil
             if case .bonjour(let txt) = result.metadata {
                 txtID = txt["id"]
-                name = txt["name"] ?? displayFallback(for: result.endpoint)
+                txtName = txt["name"]
             } else {
-                name = displayFallback(for: result.endpoint)
                 MPDiag.shared.event("  · no TXT record on \(result.endpoint)")
             }
+            let id = endpointID(result.endpoint)
+            // Bonjour's service instance name carries the *real* device name
+            // ("Tarique's Apple Watch"); WKInterfaceDevice.name — what the TXT
+            // record holds — is the generic "Apple Watch" on modern watchOS.
+            // Prefer the endpoint so players can tell each other apart.
+            let name = serviceName(for: result.endpoint) ?? txtName ?? "Apple Watch"
 
-            if PeerIdentity.isSelf(txtID: txtID, myID: instanceID) {
+            if PeerIdentity.isSelf(txtID: txtID, endpointID: id,
+                                   myID: instanceID, myEndpointID: myEndpointID) {
                 MPDiag.shared.event("  · self, hidden (\(name))")
                 continue
             }
-            // The counterfactual: this is what the old name-based check would
-            // have done. If this fires, the empty lobby is explained.
-            if name == self.displayName {
-                MPDiag.shared.event("  · NAME COLLISION with us — old build would have hidden this peer")
-            }
-            let id = endpointID(result.endpoint)
             MPDiag.shared.event("  · peer \"\(name)\" id=\(txtID?.prefix(8) ?? "none")")
-            peers.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint))
+            fresh.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint))
         }
-        MPDiag.shared.event("browse: showing \(peers.count) peer(s)")
-        self.discoveredPeers = peers
+        let shown = peerCache.merge(fresh, now: Date())
+        let held = shown.count - fresh.count
+        MPDiag.shared.event("browse: showing \(shown.count) peer(s)\(held > 0 ? " (\(held) held)" : "")")
+        self.discoveredPeers = shown
     }
 
     private func endpointID(_ endpoint: NWEndpoint) -> String {
@@ -200,9 +243,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         return "\(endpoint)"
     }
 
+    /// Bonjour escapes spaces on the wire as `\032`; undo that for display.
+    private func serviceName(for endpoint: NWEndpoint) -> String? {
+        guard case .service(let name, _, _, _) = endpoint else { return nil }
+        return name.replacingOccurrences(of: "\\032", with: " ")
+    }
+
     private func displayFallback(for endpoint: NWEndpoint) -> String {
-        if case .service(let name, _, _, _) = endpoint { return name }
-        return "Apple Watch"
+        serviceName(for: endpoint) ?? "Apple Watch"
     }
 
     // MARK: - Invite (outgoing)
@@ -344,6 +392,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         stopBrowsing()
         self.connectionState = .idle
         self.role = nil
+        peerCache.removeAll()
         self.discoveredPeers = []
     }
 
