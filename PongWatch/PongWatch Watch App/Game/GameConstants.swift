@@ -5,6 +5,9 @@ enum GameConstants {
     static let paddleWidth: CGFloat = 0.20
     static let paddleHeight: CGFloat = 0.03
 
+    // Width/height of the 46mm watch screen the physics were tuned on.
+    static let watchPlayfieldAspect: CGFloat = 416.0 / 496.0
+
     // Vertical placement of paddles (as fraction from top/bottom)
     static let paddleMarginY: CGFloat = 0.05
 

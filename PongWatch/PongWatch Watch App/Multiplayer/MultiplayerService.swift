@@ -1,6 +1,10 @@
 import Foundation
 import Network
+#if os(watchOS)
 import WatchKit
+#else
+import UIKit
+#endif
 import Combine
 
 /// Who a browse result belongs to. Kept free of Network types so it can be
@@ -81,7 +85,11 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     private var decoder = MessageFraming.Decoder()
 
     init() {
+        #if os(watchOS)
         let name = WKInterfaceDevice.current().name
+        #else
+        let name = UIDevice.current.name
+        #endif
         self.displayName = name.isEmpty ? "Apple Watch" : name
         self.bonjourType = "_\(GameConstants.mcServiceType)._tcp"
 

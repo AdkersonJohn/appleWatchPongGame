@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(watchOS)
 import WatchKit
+#endif
 
 /// Integrates Digital Crown angular velocity into paddle position. The crown
 /// reports velocity in rotations/second, so `widthPerRotation` alone sets the
@@ -69,6 +71,14 @@ struct GameView: View {
                     drawPlayfield(context: context, size: size)
                 }
                 .background(Color.black)
+                #if !os(watchOS)
+                // No crown on iPhone: the paddle follows the finger. Simultaneous
+                // so a tap still reaches onTapGesture to release a stuck ball.
+                .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    let x = min(1, max(0, drag.location.x / max(1, geo.size.width)))
+                    if let onCrownChange { onCrownChange(x) } else { state.setPlayerPaddle(normalizedCrown: x) }
+                })
+                #endif
             }
             .ignoresSafeArea()
 
@@ -91,10 +101,20 @@ struct GameView: View {
             }
             .padding(.leading, 4)
         }
-        .focusable()
+        #if !os(watchOS)
+        // Physics run in normalized coordinates tuned on the watch screen, so
+        // the phone plays the same field shape rather than a stretched one.
+        // ponytail: letterboxed; a taller field needs per-axis speed/size retuning.
+        .aspectRatio(GameConstants.watchPlayfieldAspect, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.ignoresSafeArea())
+        .statusBarHidden()
+        #endif
         .onTapGesture {
             if let onTap { onTap() } else { state.tapRelease(side: .bottom) }
         }
+        #if os(watchOS)
+        .focusable()
         // Velocity-driven: paddle speed tracks crown speed, and onIdle stops it
         // outright — no SwiftUI flick-deceleration anywhere in the path.
         .digitalCrownRotation(
@@ -105,6 +125,7 @@ struct GameView: View {
             },
             onIdle: { crown.velocity = 0 }
         )
+        #endif
         .task(id: scenePhase) {
             // Restarts on scenePhase change. When the user drops their wrist
             // (scenePhase → .inactive/.background) the loop bails so physics
@@ -136,7 +157,9 @@ struct GameView: View {
                     // Distance-based clicks instead of system detents; see CrownHaptics.
                     if haptics.shouldTick(travelDelta: x - previousX,
                                           now: now.timeIntervalSinceReferenceDate) {
+                        #if os(watchOS)
                         WKInterfaceDevice.current().play(.click)
+                        #endif
                     }
                 }
                 if let onTick {
