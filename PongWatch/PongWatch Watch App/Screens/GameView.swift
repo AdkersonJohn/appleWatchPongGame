@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(watchOS)
 import WatchKit
+#endif
 
 /// Integrates Digital Crown angular velocity into paddle position. The crown
 /// reports velocity in rotations/second, so `widthPerRotation` alone sets the
@@ -69,8 +71,22 @@ struct GameView: View {
                     drawPlayfield(context: context, size: size)
                 }
                 .background(Color.black)
+                #if !os(watchOS)
+                // No crown on iPhone: the paddle follows the finger. Simultaneous
+                // so a tap still reaches onTapGesture to release a stuck ball.
+                .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    let x = min(1, max(0, drag.location.x / max(1, geo.size.width)))
+                    if let onCrownChange { onCrownChange(x) } else { state.setPlayerPaddle(normalizedCrown: x) }
+                })
+                // The field fills the phone's full height; shrink height-based
+                // sizes so paddles and hitboxes match the watch's proportions.
+                .onAppear { updateVerticalScale(geo.size) }
+                .onChange(of: geo.size) { _, size in updateVerticalScale(size) }
+                #endif
             }
+            #if os(watchOS)
             .ignoresSafeArea()
+            #endif
 
             // Score overlay — lives outside the ignoreSafeArea region so the
             // watch's curved corner doesn't clip the digits.
@@ -91,10 +107,17 @@ struct GameView: View {
             }
             .padding(.leading, 4)
         }
-        .focusable()
+        #if !os(watchOS)
+        // Inside the safe area so the top paddle clears the Dynamic Island
+        // and the bottom one clears the home indicator.
+        .background(Color.black.ignoresSafeArea())
+        .statusBarHidden()
+        #endif
         .onTapGesture {
             if let onTap { onTap() } else { state.tapRelease(side: .bottom) }
         }
+        #if os(watchOS)
+        .focusable()
         // Velocity-driven: paddle speed tracks crown speed, and onIdle stops it
         // outright — no SwiftUI flick-deceleration anywhere in the path.
         .digitalCrownRotation(
@@ -105,6 +128,7 @@ struct GameView: View {
             },
             onIdle: { crown.velocity = 0 }
         )
+        #endif
         .task(id: scenePhase) {
             // Restarts on scenePhase change. When the user drops their wrist
             // (scenePhase → .inactive/.background) the loop bails so physics
@@ -136,7 +160,9 @@ struct GameView: View {
                     // Distance-based clicks instead of system detents; see CrownHaptics.
                     if haptics.shouldTick(travelDelta: x - previousX,
                                           now: now.timeIntervalSinceReferenceDate) {
+                        #if os(watchOS)
                         WKInterfaceDevice.current().play(.click)
+                        #endif
                     }
                 }
                 if let onTick {
@@ -147,6 +173,13 @@ struct GameView: View {
             }
         }
     }
+
+    #if !os(watchOS)
+    private func updateVerticalScale(_ size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        GameConstants.verticalScale = (size.width / size.height) / GameConstants.watchPlayfieldAspect
+    }
+    #endif
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
         let bottomSticky = state.powerUps.stickyArmed(for: .bottom) || state.stuckBall?.side == .bottom || state.remoteStuckSide == .bottom

@@ -1,6 +1,8 @@
 import Foundation
-#if canImport(WatchKit)
+#if os(watchOS)
 import WatchKit
+#elseif canImport(UIKit)
+import UIKit
 #endif
 
 protocol HapticPlayer {
@@ -10,13 +12,17 @@ protocol HapticPlayer {
 
 struct WatchHapticPlayer: HapticPlayer {
     func playClick() {
-        #if canImport(WatchKit)
+        #if os(watchOS)
         WKInterfaceDevice.current().play(.click)
+        #elseif canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
     }
     func playSuccess() {
-        #if canImport(WatchKit)
+        #if os(watchOS)
         WKInterfaceDevice.current().play(.success)
+        #elseif canImport(UIKit)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         #endif
     }
 }

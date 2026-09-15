@@ -157,8 +157,8 @@ final class GameState: ObservableObject {
             let playerPaddleTop = playerPaddleY - GameConstants.paddleHeight / 2
             let playerHalfW = powerUps.paddleWidth(for: .bottom) / 2
             if balls[i].velocity.dy > 0,
-               balls[i].position.y + GameConstants.ballRadius >= playerPaddleTop,
-               balls[i].position.y + GameConstants.ballRadius <= playerPaddleY + GameConstants.paddleHeight / 2,
+               balls[i].position.y + GameConstants.ballRadiusY >= playerPaddleTop,
+               balls[i].position.y + GameConstants.ballRadiusY <= playerPaddleY + GameConstants.paddleHeight / 2,
                abs(balls[i].position.x - playerPaddleX) <= playerHalfW {
                 if powerUps.stickyArmed(for: .bottom) {
                     stickBall(at: i, to: .bottom)
@@ -181,8 +181,8 @@ final class GameState: ObservableObject {
             let aiPaddleBottom = aiPaddleY + GameConstants.paddleHeight / 2
             let aiHalfW = powerUps.paddleWidth(for: .top) / 2
             if balls[i].velocity.dy < 0,
-               balls[i].position.y - GameConstants.ballRadius <= aiPaddleBottom,
-               balls[i].position.y - GameConstants.ballRadius >= aiPaddleY - GameConstants.paddleHeight / 2,
+               balls[i].position.y - GameConstants.ballRadiusY <= aiPaddleBottom,
+               balls[i].position.y - GameConstants.ballRadiusY >= aiPaddleY - GameConstants.paddleHeight / 2,
                abs(balls[i].position.x - aiPaddleX) <= aiHalfW {
                 if powerUps.stickyArmed(for: .top) {
                     stickBall(at: i, to: .top)
@@ -308,8 +308,8 @@ final class GameState: ObservableObject {
         let halfW = powerUps.paddleWidth(for: stuck.side) / 2
         stuck.offset = max(-halfW, min(halfW, stuck.offset))
         let y = stuck.side == .bottom
-            ? 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2 - GameConstants.ballRadius
-            : GameConstants.paddleMarginY + GameConstants.paddleHeight / 2 + GameConstants.ballRadius
+            ? 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2 - GameConstants.ballRadiusY
+            : GameConstants.paddleMarginY + GameConstants.paddleHeight / 2 + GameConstants.ballRadiusY
         balls[stuck.ballIndex].position = CGPoint(x: paddleX + stuck.offset, y: y)
         balls[stuck.ballIndex].velocity = .zero
         stuck.holdRemaining -= dt

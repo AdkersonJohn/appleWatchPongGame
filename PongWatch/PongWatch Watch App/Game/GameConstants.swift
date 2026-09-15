@@ -3,13 +3,29 @@ import CoreGraphics
 enum GameConstants {
     // Paddle dimensions as fractions of screen size
     static let paddleWidth: CGFloat = 0.20
-    static let paddleHeight: CGFloat = 0.03
+    /// Fraction of field height, so it shrinks with `verticalScale` to keep the
+    /// paddle's on-screen thickness the same on a tall iPhone field.
+    static var paddleHeight: CGFloat { 0.03 * verticalScale }
+
+    /// Field shape relative to the watch screen: (width/height) ÷ watch
+    /// (width/height). 1 on the watch, about 0.55 on a tall iPhone. Everything
+    /// measured as a fraction of field *height* multiplies by this so sizes and
+    /// hitboxes look the same as on the watch; speeds stay normalized, so a
+    /// rally takes the same time on both.
+    // ponytail: process-wide, set once by the iPhone GameView; make it
+    // per-GameState if two differently shaped fields ever run at once.
+    static var verticalScale: CGFloat = 1
+
+    // Width/height of the 46mm watch screen the physics were tuned on.
+    static let watchPlayfieldAspect: CGFloat = 416.0 / 496.0
 
     // Vertical placement of paddles (as fraction from top/bottom)
     static let paddleMarginY: CGFloat = 0.05
 
     // Ball
     static let ballRadius: CGFloat = 0.02  // fraction of screen width
+    /// The ball radius expressed as a fraction of field height, for vertical hit tests.
+    static var ballRadiusY: CGFloat { ballRadius * verticalScale }
 
     // Speeds (normalized units per second)
     static let initialBallSpeed: CGFloat = 0.6
@@ -100,6 +116,7 @@ enum GameConstants {
     static let powerUpDriftSpeed: CGFloat = 0.08
     /// Pickup radius = 1.5 × ballRadius.
     static let powerUpPickupRadius: CGFloat = 0.03
+    static var powerUpPickupRadiusY: CGFloat { powerUpPickupRadius * verticalScale }
     static let widePaddleFactor: CGFloat = 1.5
     static let widePaddleDuration: CGFloat = 10
     static let stickyHoldSeconds: CGFloat = 3
