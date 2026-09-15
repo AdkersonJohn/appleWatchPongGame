@@ -78,9 +78,15 @@ struct GameView: View {
                     let x = min(1, max(0, drag.location.x / max(1, geo.size.width)))
                     if let onCrownChange { onCrownChange(x) } else { state.setPlayerPaddle(normalizedCrown: x) }
                 })
+                // The field fills the phone's full height; shrink height-based
+                // sizes so paddles and hitboxes match the watch's proportions.
+                .onAppear { updateVerticalScale(geo.size) }
+                .onChange(of: geo.size) { _, size in updateVerticalScale(size) }
                 #endif
             }
+            #if os(watchOS)
             .ignoresSafeArea()
+            #endif
 
             // Score overlay — lives outside the ignoreSafeArea region so the
             // watch's curved corner doesn't clip the digits.
@@ -102,11 +108,8 @@ struct GameView: View {
             .padding(.leading, 4)
         }
         #if !os(watchOS)
-        // Physics run in normalized coordinates tuned on the watch screen, so
-        // the phone plays the same field shape rather than a stretched one.
-        // ponytail: letterboxed; a taller field needs per-axis speed/size retuning.
-        .aspectRatio(GameConstants.watchPlayfieldAspect, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Inside the safe area so the top paddle clears the Dynamic Island
+        // and the bottom one clears the home indicator.
         .background(Color.black.ignoresSafeArea())
         .statusBarHidden()
         #endif
@@ -170,6 +173,13 @@ struct GameView: View {
             }
         }
     }
+
+    #if !os(watchOS)
+    private func updateVerticalScale(_ size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        GameConstants.verticalScale = (size.width / size.height) / GameConstants.watchPlayfieldAspect
+    }
+    #endif
 
     private func drawPlayfield(context: GraphicsContext, size: CGSize) {
         let bottomSticky = state.powerUps.stickyArmed(for: .bottom) || state.stuckBall?.side == .bottom || state.remoteStuckSide == .bottom

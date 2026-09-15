@@ -196,6 +196,25 @@ final class GameStateTests: XCTestCase {
         XCTAssertEqual(state.score, 0, "Paddle hit does not change score")
     }
 
+    /// iPhone stretches the field to the full screen height. Vertical sizes are
+    /// fractions of that height, so without scaling them down the ball would
+    /// bounce well above a paddle drawn twice as thick as on the watch.
+    func test_tallFieldBallDoesNotBounceWhileStillAboveThePaddle() {
+        GameConstants.verticalScale = 0.5
+        defer { GameConstants.verticalScale = 1 }
+        let state = GameState()
+        state.phase = .playing
+        state.playerPaddleX = 0.5
+        let paddleTop = 1.0 - GameConstants.paddleMarginY - GameConstants.paddleHeight / 2
+        // Gap below the ball's scaled edge, but inside an unscaled ball radius.
+        let y = paddleTop - GameConstants.ballRadius * 0.5 - 0.005
+        state.ball = Ball(position: CGPoint(x: 0.5, y: y), velocity: CGVector(dx: 0, dy: 0.01))
+
+        state.update(dt: 0.01)
+
+        XCTAssertGreaterThan(state.ball.velocity.dy, 0, "Ball must reach the paddle before bouncing")
+    }
+
     func test_ballMissesPlayerPaddleWhenOffsetHorizontally() {
         let state = GameState()
         state.phase = .playing

@@ -78,9 +78,10 @@ struct PowerUpSystem {
                                               : GameConstants.paddleMarginY
         let halfH = GameConstants.paddleHeight / 2
         let r = GameConstants.powerUpPickupRadius
+        let rY = GameConstants.powerUpPickupRadiusY
         let halfW = paddleWidth(for: p.targetSide) / 2
         if abs(p.position.x - paddleX) <= halfW + r,
-           abs(p.position.y - paddleY) <= halfH + r {
+           abs(p.position.y - paddleY) <= halfH + rY {
             let kind = p.kind, side = p.targetSide
             grant(kind, to: side)
             resolvePickup()
@@ -88,8 +89,8 @@ struct PowerUpSystem {
         }
 
         // Despawn once fully past the paddle line.
-        if p.position.y < GameConstants.paddleMarginY - halfH - r ||
-           p.position.y > 1.0 - GameConstants.paddleMarginY + halfH + r {
+        if p.position.y < GameConstants.paddleMarginY - halfH - rY ||
+           p.position.y > 1.0 - GameConstants.paddleMarginY + halfH + rY {
             resolvePickup()
         }
         return nil
