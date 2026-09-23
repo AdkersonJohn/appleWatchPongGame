@@ -22,6 +22,15 @@ enum NetworkMessage: Codable, Equatable {
     case stickyRelease
 }
 
+/// Guards against two devices running different builds, which is the likeliest
+/// way a watch-to-phone match fails: the link connects and then nothing moves.
+enum ProtoCheck {
+    static func isCompatible(_ theirs: UInt8,
+                             ours: UInt8 = GameConstants.multiplayerProtocolVersion) -> Bool {
+        theirs == ours
+    }
+}
+
 struct BallState: Codable, Equatable {
     var x: CGFloat
     var y: CGFloat

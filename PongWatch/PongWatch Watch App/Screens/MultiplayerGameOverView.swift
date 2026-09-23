@@ -9,6 +9,8 @@ struct MultiplayerGameOverView: View {
     let allowRematch: Bool
     let onRematch: () -> Void
     let onBack: () -> Void
+    @ObservedObject private var diag = MPDiag.shared
+    @State private var showDiagnostics = false
 
     var body: some View {
         ZStack {
@@ -43,8 +45,16 @@ struct MultiplayerGameOverView: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+
+                Button("Diagnostics") { showDiagnostics = true }
+                    .font(.footnote)
+                    .foregroundColor(.blue.opacity(0.8))
             }
             .padding(.horizontal, 12)
+        }
+        .sheet(isPresented: $showDiagnostics) {
+            MPDiagnosticsView(lines: diag.lines)
+                .onAppear { MPDiag.shared.flushTallies() }
         }
     }
 }

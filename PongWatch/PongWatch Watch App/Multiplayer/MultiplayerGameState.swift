@@ -18,7 +18,17 @@ enum MultiplayerMatchPhase: Equatable {
 
 final class MultiplayerGameState: ObservableObject {
     // Public, observable state
-    @Published private(set) var matchPhase: MultiplayerMatchPhase = .pairing
+    /// Every transition is logged: on a two-device test the phase timeline is
+    /// what shows which side stalled, and where.
+    @Published private(set) var matchPhase: MultiplayerMatchPhase = .pairing {
+        didSet {
+            guard oldValue != matchPhase else { return }
+            let role = service.role.map { "\($0)" } ?? "none"
+            Task { @MainActor in
+                MPDiag.shared.event("phase \(oldValue) -> \(self.matchPhase) (role \(role))")
+            }
+        }
+    }
     @Published private(set) var role: PeerRole? = nil
     @Published private(set) var hostScore: Int = 0
     @Published private(set) var clientScore: Int = 0
@@ -212,8 +222,20 @@ final class MultiplayerGameState: ObservableObject {
 
     private func applyIncomingSnapshot(_ snap: GameSnapshot) {
         guard service.role == .client else { return }
+        if !ProtoCheck.isCompatible(snap.protoVersion) {
+            // Logged once per snapshot would flood; the tally keeps it visible
+            // without burying everything else.
+            Task { @MainActor in MPDiag.shared.tally("rx snapshot PROTO MISMATCH v\(snap.protoVersion)") }
+            return
+        }
         let delta = snap.tickSeq &- lastReceivedTickSeq
-        if delta == 0 || delta > UInt32.max / 2 { return }
+        if delta == 0 || delta > UInt32.max / 2 {
+            Task { @MainActor in MPDiag.shared.tally("snapshot out-of-order") }
+            return
+        }
+        if delta > 1 {
+            Task { @MainActor in MPDiag.shared.tally("snapshot gap \(delta - 1) dropped") }
+        }
         lastReceivedTickSeq = snap.tickSeq
 
         game.balls = snap.balls.map {
@@ -341,6 +363,12 @@ final class MultiplayerGameState: ObservableObject {
             if let last = lastPeerActivityAt,
                Date().timeIntervalSince(last) > peerSilenceTimeout,
                let myRole = service.role {
+                let silent = Date().timeIntervalSince(last)
+                Task { @MainActor in
+                    MPDiag.shared.event(String(format: "WATCHDOG: peer silent %.1fs > %.1fs — ending match",
+                                               silent, self.peerSilenceTimeout))
+                    MPDiag.shared.flushTallies()
+                }
                 matchPhase = .matchOver(winner: myRole)
                 service.disconnect()
                 return

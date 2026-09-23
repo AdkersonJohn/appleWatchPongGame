@@ -32,13 +32,23 @@ struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
                                 Button {
                                     service.invite(peer)
                                 } label: {
-                                    Text(peer.displayName)
-                                        .font(.body)
-                                        .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 6)
-                                        .background(Color.white.opacity(0.15))
-                                        .cornerRadius(8)
+                                    VStack(spacing: 1) {
+                                        Text(peer.displayName)
+                                            .font(.body)
+                                            .foregroundColor(.white)
+                                        // Two stock devices report the same name;
+                                        // this is how you know the watch found
+                                        // the phone and not itself.
+                                        if let platform = peer.platform {
+                                            Text(platform)
+                                                .font(.caption2)
+                                                .foregroundColor(.white.opacity(0.55))
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.15))
+                                    .cornerRadius(8)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -57,10 +67,13 @@ struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
             .padding(.vertical, 4)
         }
         .sheet(isPresented: $showDiagnostics) {
+            // Flush pending rate counters so the log the tester photographs
+            // isn't missing the last few seconds.
             MPDiagnosticsView(lines: diag.lines)
+                .onAppear { MPDiag.shared.flushTallies() }
         }
         .onAppear {
-            MPDiag.shared.reset()
+            MPDiag.shared.event("--- lobby opened ---")
             service.startAdvertising()
             service.startBrowsing()
         }
