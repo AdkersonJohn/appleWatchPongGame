@@ -19,10 +19,17 @@ struct NearbyPlayersView<Service: MultiplayerServiceProtocol>: View {
                         Text("Searching…")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.7))
-                        Text("Make sure the other player is also on Multiplayer.")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                            .multilineTextAlignment(.center)
+                        if let issue = service.lastIssue {
+                            Text(issue)
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                                .multilineTextAlignment(.center)
+                        } else {
+                            Text("Make sure the other player is also on Multiplayer.")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
+                        }
                     }
                     Spacer()
                 } else {

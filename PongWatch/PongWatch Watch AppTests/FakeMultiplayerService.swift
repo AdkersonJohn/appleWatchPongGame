@@ -5,6 +5,7 @@ import Combine
 
 final class FakeMultiplayerService: MultiplayerServiceProtocol {
     @Published var discoveredPeers: [DiscoveredPeer] = []
+    @Published var lastIssue: String? = nil
     @Published var connectionState: MPConnectionState = .idle
     @Published var role: PeerRole? = nil
 

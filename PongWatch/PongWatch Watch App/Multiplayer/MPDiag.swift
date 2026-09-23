@@ -59,6 +59,10 @@ final class MPDiag: ObservableObject {
         event("rate: \(summary)")
     }
 
+    /// Set by the service so a transport failure can also reach the lobby
+    /// screen, not just the log.
+    var lastIssueSink: ((String) -> Void)?
+
     /// Everything in the buffer as one blob, for the phone's Copy button.
     var shareText: String { lines.joined(separator: "\n") }
 

@@ -75,3 +75,23 @@ final class MessageFramingFailureTests: XCTestCase {
         XCTAssertEqual(decoder.failureCount, 0)
     }
 }
+
+final class MPIssueTests: XCTestCase {
+    /// A denied Local Network permission parks the browser in .waiting forever
+    /// and looks exactly like "nobody is nearby", which is the single most
+    /// likely way the real two-device test fails.
+    func test_deniedLocalNetworkBecomesAnInstructionNotAnErrorCode() {
+        let hint = MPIssue.hint("PolicyDenied: -65555")
+        XCTAssertTrue(hint.contains("Local Network"), hint)
+        XCTAssertFalse(hint.contains("65555"), "a tester can't act on the raw code: \(hint)")
+    }
+
+    func test_noNetworkSaysToCheckWiFi() {
+        XCTAssertTrue(MPIssue.hint("The network is down").lowercased().contains("wi-fi"))
+    }
+
+    /// Anything unrecognised still reaches the screen rather than being swallowed.
+    func test_unknownFailureIsStillShown() {
+        XCTAssertTrue(MPIssue.hint("weird kernel thing").contains("weird kernel thing"))
+    }
+}

@@ -57,6 +57,7 @@ struct PeerCache {
 @MainActor
 final class MultiplayerService: MultiplayerServiceProtocol {
     @Published private(set) var discoveredPeers: [DiscoveredPeer] = []
+    @Published private(set) var lastIssue: String? = nil
     @Published private(set) var connectionState: MPConnectionState = .idle
     @Published private(set) var role: PeerRole? = nil
 
@@ -97,6 +98,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         self.incomingMessages = AsyncStream { cont = $0 }
         self.messageContinuation = cont
 
+        MPDiag.shared.lastIssueSink = { [weak self] raw in
+            Task { @MainActor in self?.lastIssue = MPIssue.hint(raw) }
+        }
         MPDiag.shared.event("init name=\"\(self.displayName)\" id=\(instanceID.prefix(8)) type=\(bonjourType)")
     }
 
@@ -135,9 +139,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
                 Task { @MainActor in
                     switch state {
                     case .setup:            MPDiag.shared.event("advertise: setup")
-                    case .ready:            MPDiag.shared.event("advertise: READY")
-                    case .waiting(let e):   MPDiag.shared.event("advertise: WAITING \(e)")
-                    case .failed(let e):    MPDiag.shared.event("advertise: FAILED \(e)")
+                    case .ready:
+                        MPDiag.shared.event("advertise: READY")
+                    case .waiting(let e):
+                        MPDiag.shared.event("advertise: WAITING \(e)")
+                        MPDiag.shared.lastIssueSink?("\(e)")
+                    case .failed(let e):
+                        MPDiag.shared.event("advertise: FAILED \(e)")
+                        MPDiag.shared.lastIssueSink?("\(e)")
                     case .cancelled:        MPDiag.shared.event("advertise: cancelled")
                     @unknown default:       MPDiag.shared.event("advertise: unknown state")
                     }
@@ -193,9 +202,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
             Task { @MainActor in
                 switch state {
                 case .setup:            MPDiag.shared.event("browse: setup")
-                case .ready:            MPDiag.shared.event("browse: READY")
-                case .waiting(let e):   MPDiag.shared.event("browse: WAITING \(e) — check local network permission")
-                case .failed(let e):    MPDiag.shared.event("browse: FAILED \(e)")
+                case .ready:
+                    MPDiag.shared.event("browse: READY")
+                case .waiting(let e):
+                    MPDiag.shared.event("browse: WAITING \(e) — check local network permission")
+                    MPDiag.shared.lastIssueSink?("\(e)")
+                case .failed(let e):
+                    MPDiag.shared.event("browse: FAILED \(e)")
+                    MPDiag.shared.lastIssueSink?("\(e)")
                 case .cancelled:        MPDiag.shared.event("browse: cancelled")
                 @unknown default:       MPDiag.shared.event("browse: unknown state")
                 }
@@ -253,6 +267,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         let shown = peerCache.merge(fresh, now: Date())
         let held = shown.count - fresh.count
         MPDiag.shared.event("browse: showing \(shown.count) peer(s)\(held > 0 ? " (\(held) held)" : "")")
+        if !shown.isEmpty { self.lastIssue = nil }
         self.discoveredPeers = shown
     }
 
