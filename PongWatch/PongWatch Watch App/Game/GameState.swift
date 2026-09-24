@@ -25,6 +25,10 @@ final class GameState: ObservableObject {
     @Published var lastRunWasRecord: Bool = false
     // nil = no countdown, ball is in play. Otherwise the number (3, 2, 1) to show.
     @Published var countdownRemaining: Int?
+    /// Where the ball will go when the countdown ends, decided up front so
+    /// both players can see the serve direction before it moves. nil while the
+    /// ball is in play.
+    @Published private(set) var pendingServe: CGVector?
     @Published var particles: [Particle] = []
     @Published private(set) var powerUps = PowerUpSystem()
     @Published private(set) var stuckBall: StuckBall?
@@ -41,6 +45,9 @@ final class GameState: ObservableObject {
     var bottomExitScoresOpponent: Bool = false
     private(set) var opponentScoredThisTick: Int = 0
     private(set) var bottomPaddleHitThisTick: Bool = false
+    /// Where a side wall was struck this tick, for the multiplayer snapshot.
+    private(set) var wallHitThisTick: CGPoint?
+    private(set) var wallHitWasLeft: Bool = false
     private(set) var topPaddleHitThisTick: Bool = false
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
@@ -70,6 +77,7 @@ final class GameState: ObservableObject {
         aiPaddleX = 0.5
         countdownRemaining = nil
         countdownElapsed = 0
+        pendingServe = nil
         particles = []
         hitCount = 0
         powerUps.reset()
@@ -90,6 +98,7 @@ final class GameState: ObservableObject {
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        pendingServe = randomInitialVelocity(speed: currentBallSpeed)
         powerUps.clearPickup()
         stuckBall = nil
         remoteStuckSide = nil
@@ -106,6 +115,7 @@ final class GameState: ObservableObject {
         opponentScoredThisTick = 0
         bottomPaddleHitThisTick = false
         topPaddleHitThisTick = false
+        wallHitThisTick = nil
 
         updateParticles(dt: dt)
 
@@ -146,10 +156,16 @@ final class GameState: ObservableObject {
             if balls[i].position.x < GameConstants.ballRadius {
                 balls[i].position.x = GameConstants.ballRadius
                 balls[i].velocity.dx = -balls[i].velocity.dx
+                spawnImpactSparks(at: balls[i].position, awayFrom: .leftWall)
+                wallHitThisTick = balls[i].position
+                wallHitWasLeft = true
             }
             if balls[i].position.x > 1.0 - GameConstants.ballRadius {
                 balls[i].position.x = 1.0 - GameConstants.ballRadius
                 balls[i].velocity.dx = -balls[i].velocity.dx
+                spawnImpactSparks(at: balls[i].position, awayFrom: .rightWall)
+                wallHitThisTick = balls[i].position
+                wallHitWasLeft = false
             }
 
             // Player paddle (bottom)
@@ -164,6 +180,7 @@ final class GameState: ObservableObject {
                     stickBall(at: i, to: .bottom)
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: playerPaddleX)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .bottom)
                     hapticPlayer.playClick()
                     bottomPaddleHitThisTick = true
                     hitCount += 1
@@ -188,6 +205,7 @@ final class GameState: ObservableObject {
                     stickBall(at: i, to: .top)
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: aiPaddleX)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .top)
                     topPaddleHitThisTick = true
                 }
             }
@@ -225,6 +243,7 @@ final class GameState: ObservableObject {
                     powerUps.consumeShield(for: .top)
                     balls[i].position.y = 0
                     balls[i].velocity.dy = abs(balls[i].velocity.dy)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .top)
                 } else {
                     score += 1
                     spawnScoreBurst(atX: b.position.x)
@@ -236,6 +255,7 @@ final class GameState: ObservableObject {
                     powerUps.consumeShield(for: .bottom)
                     balls[i].position.y = 1.0
                     balls[i].velocity.dy = -abs(balls[i].velocity.dy)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .bottom)
                 } else if bottomExitScoresOpponent {
                     opponentScoredThisTick += 1
                     if balls.count == 1 { startCountdown(); return }
@@ -328,10 +348,50 @@ final class GameState: ObservableObject {
         balls[stuck.ballIndex].velocity = CGVector(dx: dx, dy: stuck.side == .bottom ? -dyMag : dyMag)
     }
 
+    /// Client-side only: mirror the host's queued serve so both screens show
+    /// the same preview.
+    func setPendingServeForRemote(_ serve: CGVector?) { pendingServe = serve }
+
     /// Tap-to-release entry point (GameView tap / MP stickyRelease message).
     func tapRelease(side: PaddleSide) {
         guard let stuck = stuckBall, stuck.side == side else { return }
         releaseStuckBall()
+    }
+
+    /// Which way an impact's sparks fly: away from the surface that was hit.
+    enum ImpactSurface {
+        case bottom, top, leftWall, rightWall
+
+        /// Unit vector pointing back into the playfield.
+        var normal: CGVector {
+            switch self {
+            case .bottom:    return CGVector(dx: 0, dy: -1)
+            case .top:       return CGVector(dx: 0, dy: 1)
+            case .leftWall:  return CGVector(dx: 1, dy: 0)
+            case .rightWall: return CGVector(dx: -1, dy: 0)
+            }
+        }
+    }
+
+    /// A small white spray at the point of contact, thrown back into the field.
+    /// Appended rather than replacing `particles`, so a hit during a scoring
+    /// burst doesn't wipe the burst out from under itself.
+    func spawnImpactSparks(at point: CGPoint, awayFrom surface: ImpactSurface) {
+        let normal = surface.normal
+        let baseAngle = atan2(normal.dy, normal.dx)
+        for _ in 0..<GameConstants.impactSparkCount {
+            let angle = baseAngle + CGFloat.random(in: -GameConstants.impactSparkSpread...GameConstants.impactSparkSpread)
+            let speed = CGFloat.random(in: GameConstants.impactSparkMinSpeed...GameConstants.impactSparkMaxSpeed)
+            let lifespan = CGFloat.random(in: GameConstants.impactSparkMinLifespan...GameConstants.impactSparkMaxLifespan)
+            particles.append(Particle(
+                position: point,
+                velocity: CGVector(dx: cos(angle) * speed, dy: sin(angle) * speed),
+                ageRemaining: lifespan,
+                totalAge: lifespan,
+                radius: GameConstants.ballRadius * GameConstants.impactSparkRadiusFactor,
+                red: 1, green: 1, blue: 1
+            ))
+        }
     }
 
     func spawnScoreBurst(atX x: CGFloat) {
@@ -379,6 +439,7 @@ final class GameState: ObservableObject {
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        pendingServe = randomInitialVelocity(speed: currentBallSpeed)
         powerUps.clearPickup()
         stuckBall = nil
         remoteStuckSide = nil
@@ -395,7 +456,9 @@ final class GameState: ObservableObject {
             countdownRemaining = remaining
         } else {
             countdownRemaining = nil
-            balls[0].velocity = randomInitialVelocity(speed: currentBallSpeed)
+            // Launch along exactly what was previewed, or the arrow lied.
+            balls[0].velocity = pendingServe ?? randomInitialVelocity(speed: currentBallSpeed)
+            pendingServe = nil
         }
     }
 

@@ -86,6 +86,12 @@ struct GameSnapshot: Codable, Equatable {
     var stuckSide: PeerRole?
     /// Monotonic tick sequence; receiver discards out-of-order snapshots.
     var tickSeq: UInt32
+    /// Non-nil for exactly one snapshot after the ball hit a side wall.
+    var wallImpact: WallImpact? = nil
+    /// The serve the host has queued during a countdown, in host space, so the
+    /// client can draw the same preview instead of guessing.
+    var pendingServeVX: CGFloat? = nil
+    var pendingServeVY: CGFloat? = nil
 }
 
 /// Client → host at 30Hz; reports the client's crown-controlled paddle position.
@@ -95,6 +101,15 @@ struct PaddleInput: Codable, Equatable {
     /// so no coordinate transform is needed.
     var paddleX: CGFloat
     var tickSeq: UInt32
+}
+
+/// Where the ball met a side wall on the host's tick. The client can't derive
+/// this — it renders the host's physics — so without it a wall bounce shows an
+/// impact on one screen and nothing on the other.
+struct WallImpact: Codable, Equatable {
+    var x: CGFloat
+    var y: CGFloat
+    var onLeft: Bool
 }
 
 struct ScoreEvent: Codable, Equatable {

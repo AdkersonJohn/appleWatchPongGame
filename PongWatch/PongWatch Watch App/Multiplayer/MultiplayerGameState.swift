@@ -297,13 +297,32 @@ final class MultiplayerGameState: ObservableObject {
         }
         game.score = snap.clientScore
         game.countdownRemaining = snap.countdownRemaining
+        // Y flips across the two screens; X is symmetric.
+        if let vx = snap.pendingServeVX, let vy = snap.pendingServeVY {
+            game.setPendingServeForRemote(CGVector(dx: vx, dy: -vy))
+        } else {
+            game.setPendingServeForRemote(nil)
+        }
         game.phase = snap.phase
 
         hostScore = snap.hostScore
         clientScore = snap.clientScore
 
+        // The client renders the host's physics, so every impact it should see
+        // arrives as a flag rather than happening locally.
         if snap.clientPaddleHit {
             game.playPaddleHitHaptic()
+            if let ball = game.balls.first {
+                game.spawnImpactSparks(at: ball.position, awayFrom: .bottom)
+            }
+        }
+        if snap.hostPaddleHit, let ball = game.balls.first {
+            game.spawnImpactSparks(at: ball.position, awayFrom: .top)
+        }
+        if let wall = snap.wallImpact {
+            // X is symmetric across the flip; Y is not.
+            game.spawnImpactSparks(at: CGPoint(x: wall.x, y: 1.0 - wall.y),
+                                   awayFrom: wall.onLeft ? .leftWall : .rightWall)
         }
 
         if snap.pickupCollected == .client {
@@ -442,7 +461,10 @@ final class MultiplayerGameState: ObservableObject {
         broadcastSnapshot(
             scoreEvent: pendingScoreEvent,
             hostPaddleHit: hostPaddleHit,
-            clientPaddleHit: clientPaddleHit
+            clientPaddleHit: clientPaddleHit,
+            wallImpact: game.wallHitThisTick.map {
+                WallImpact(x: $0.x, y: $0.y, onLeft: game.wallHitWasLeft)
+            }
         )
 
         // Only the host spawns particles on its own score. The client will spawn
@@ -498,7 +520,8 @@ final class MultiplayerGameState: ObservableObject {
     private func broadcastSnapshot(
         scoreEvent: ScoreEvent? = nil,
         hostPaddleHit: Bool = false,
-        clientPaddleHit: Bool = false
+        clientPaddleHit: Bool = false,
+        wallImpact: WallImpact? = nil
     ) {
         tickSeq &+= 1
         func effectsState(_ side: PaddleSide) -> EffectsState {
@@ -528,7 +551,10 @@ final class MultiplayerGameState: ObservableObject {
                                                            y: $0.position.y, driftSign: $0.driftSign) },
             pickupCollected: collectedRole,
             stuckSide: stuckSide,
-            tickSeq: tickSeq
+            tickSeq: tickSeq,
+            wallImpact: wallImpact,
+            pendingServeVX: game.pendingServe?.dx,
+            pendingServeVY: game.pendingServe?.dy
         )
         service.send(.snapshot(snap), reliable: false)
     }

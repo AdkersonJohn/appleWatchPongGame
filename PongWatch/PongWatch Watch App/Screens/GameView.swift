@@ -209,6 +209,28 @@ struct GameView: View {
                    width: state.powerUps.paddleWidth(for: .top),
                    color: topSticky ? .green : .white)
 
+        // Serve preview: both players get to see which way the ball will go
+        // before it moves, instead of reacting after the fact.
+        if state.countdownRemaining != nil, let serve = state.pendingServe {
+            let speed = hypot(serve.dx, serve.dy)
+            if speed > 0 {
+                let ux = serve.dx / speed, uy = serve.dy / speed
+                let inset = GameConstants.servePreviewInset * size.height
+                let length = GameConstants.servePreviewLength * size.height
+                let centre = CGPoint(x: 0.5 * size.width, y: 0.5 * size.height)
+                let from = CGPoint(x: centre.x + ux * inset, y: centre.y + uy * inset)
+                let to = CGPoint(x: centre.x + ux * (inset + length),
+                                 y: centre.y + uy * (inset + length))
+                var path = Path()
+                path.move(to: from)
+                path.addLine(to: to)
+                context.stroke(path, with: .color(.white.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: max(1, size.width * 0.008),
+                                                  lineCap: .round,
+                                                  dash: [size.width * 0.02, size.width * 0.025]))
+            }
+        }
+
         if let count = state.countdownRemaining {
             // Countdown: hide ball, show big number in center.
             let countText = Text("\(count)")

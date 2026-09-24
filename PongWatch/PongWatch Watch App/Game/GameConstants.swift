@@ -72,6 +72,29 @@ enum GameConstants {
     static let crownHapticStep: CGFloat = 0.10
     static let crownHapticMinInterval: Double = 0.14
 
+    /// Length of the serve-direction preview, as a fraction of field height.
+    /// Long enough to read at a glance, short enough not to reach a paddle and
+    /// look like it's predicting the whole rally.
+    static let servePreviewLength: CGFloat = 0.22
+    /// Gap before the dashes start, so they clear the countdown digit drawn
+    /// in the middle of the field rather than running through it.
+    static let servePreviewInset: CGFloat = 0.10
+
+    // Impact sparks — the small white flash where the ball meets a paddle or
+    // wall. Deliberately fewer, smaller and shorter-lived than the scoring
+    // burst: this fires several times a rally, so it has to read as a tick of
+    // feedback rather than a firework.
+    static let impactSparkCount: Int = 5
+    static let impactSparkMinSpeed: CGFloat = 0.25
+    static let impactSparkMaxSpeed: CGFloat = 0.65
+    static let impactSparkMinLifespan: CGFloat = 0.10
+    static let impactSparkMaxLifespan: CGFloat = 0.22
+    /// Fraction of ballRadius. Smaller than the scoring burst's specks.
+    static let impactSparkRadiusFactor: CGFloat = 0.30
+    /// Half-angle of the spray cone around the surface normal. A wide fan
+    /// looks like an explosion; this keeps it hugging the surface.
+    static let impactSparkSpread: CGFloat = .pi / 3
+
     // Scoring burst
     static let particlesPerBurst: Int = 20
     static let particleMinSpeed: CGFloat = 0.4
