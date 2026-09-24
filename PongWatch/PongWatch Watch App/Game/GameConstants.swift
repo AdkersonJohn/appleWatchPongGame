@@ -50,9 +50,9 @@ enum GameConstants {
     static let aiSpeedFactorCap: CGFloat = 2.0
 
     /// AI paddle speed after the player has scored `playerScore` times.
-    static func aiSpeed(playerScore: Int) -> CGFloat {
+    static func aiSpeed(playerScore: Int, rampFactor: CGFloat = 1) -> CGFloat {
         let factor = min(aiSpeedFactorCap,
-                         1 + aiSpeedIncreasePerPoint * CGFloat(max(0, playerScore)))
+                         1 + aiSpeedIncreasePerPoint * rampFactor * CGFloat(max(0, playerScore)))
         return aiMaxSpeed * factor
     }
 

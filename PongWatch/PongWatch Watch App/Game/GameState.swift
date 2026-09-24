@@ -49,6 +49,20 @@ final class GameState: ObservableObject {
     var bottomExitScoresOpponent: Bool = false
     private(set) var opponentScoredThisTick: Int = 0
     private(set) var bottomPaddleHitThisTick: Bool = false
+    /// Single-player tuning from the equipped ability. Neutral in multiplayer.
+    private(set) var tuning = AbilityTuning()
+    /// How much the ball speeds up per tier, after any ability. Exposed so the
+    /// effect is checkable without replaying a whole rally.
+    var speedIncreasePerTier: CGFloat { GameConstants.speedIncreasePerTier * tuning.speedTierFactor }
+    /// How long a caught ball can be held, after any ability.
+    var stickyHoldSeconds: CGFloat { GameConstants.stickyHoldSeconds * tuning.stickyHoldFactor }
+    /// The AI's current paddle speed, after any ability.
+    func aiSpeedNow(playerScore: Int) -> CGFloat {
+        let ramped = GameConstants.aiSpeed(playerScore: playerScore,
+                                           rampFactor: tuning.aiRampFactor)
+        return ramped * tuning.aiSpeedFactor
+    }
+
     /// Where a side wall was struck this tick, for the multiplayer snapshot.
     private(set) var wallHitThisTick: CGPoint?
     private(set) var wallHitWasLeft: Bool = false
@@ -80,6 +94,7 @@ final class GameState: ObservableObject {
         score = 0
         lastRunWasRecord = false
         currentBallSpeed = GameConstants.initialBallSpeed
+        tuning = AbilityTuning()
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         playerPaddleX = 0.5
         aiPaddleX = 0.5
@@ -105,11 +120,19 @@ final class GameState: ObservableObject {
     /// the other paddle is a person, and nobody should lose to someone else's
     /// unlocks rather than their own play.
     private func applyEquippedAbilities() {
+        tuning = AbilityTuning()
+        powerUps.baseWidthFactor = 1
+        powerUps.spawnIntervalFactor = 1
+        powerUps.pickupRadiusFactor = 1
         guard topSideIsAI else { return }
-        let abilities = UnlockEffects(store: progression).abilities
-        if abilities.contains(.shieldStart) { powerUps.grant(.shield, to: .bottom) }
-        powerUps.baseWidthFactor = abilities.contains(.widePaddle) ? GameConstants.longPaddleFactor : 1
-        powerUps.spawnIntervalFactor = abilities.contains(.luckyDrops) ? GameConstants.luckyDropsFactor : 1
+
+        tuning = AbilityTuning.for(UnlockEffects(store: progression).ability)
+        if tuning.startsWithShield { powerUps.grant(.shield, to: .bottom) }
+        if tuning.startsWithSticky { powerUps.grant(.stickyBall, to: .bottom) }
+        powerUps.baseWidthFactor = tuning.paddleWidthFactor
+        powerUps.spawnIntervalFactor = tuning.spawnIntervalFactor
+        powerUps.pickupRadiusFactor = tuning.pickupRadiusFactor
+        currentBallSpeed = GameConstants.initialBallSpeed * tuning.ballSpeedFactor
     }
 
     /// Public entry point used by multiplayer to start a fresh serve.
@@ -206,7 +229,7 @@ final class GameState: ObservableObject {
                     hitCount += 1
                     if hitCount % GameConstants.hitsPerSpeedTier == 0,
                        currentBallSpeed < GameConstants.maxBallSpeed {
-                        let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                        let bumped = currentBallSpeed * (1 + speedIncreasePerTier)
                         currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
                         rescaleBallSpeed(ballIndex: i, to: currentBallSpeed)
                     }
@@ -239,7 +262,7 @@ final class GameState: ObservableObject {
         let aiDelta = targetX - aiPaddleX
         // Single-player only: the AI reacts faster the more the player has
         // scored on it. In multiplayer the top paddle is a human, so leave it.
-        let aiSpeed = topSideIsAI ? GameConstants.aiSpeed(playerScore: score)
+        let aiSpeed = topSideIsAI ? aiSpeedNow(playerScore: score)
                                   : GameConstants.aiMaxSpeed
         let maxStep = aiSpeed * dt
         let step: CGFloat
@@ -342,7 +365,7 @@ final class GameState: ObservableObject {
         let offset = max(-halfW, min(halfW, balls[index].position.x - paddleX))
         let hold = (side == .top && topSideIsAI)
             ? GameConstants.aiStickyHoldSeconds
-            : GameConstants.stickyHoldSeconds
+            : stickyHoldSeconds
         stuckBall = StuckBall(side: side, offset: offset, holdRemaining: hold, ballIndex: index)
         balls[index].velocity = .zero
     }

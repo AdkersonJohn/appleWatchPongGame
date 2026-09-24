@@ -55,6 +55,8 @@ struct PowerUpSystem {
     var baseWidthFactor: CGFloat = 1
     /// Lucky Drops shortens the spawn wait. 1 = no ability.
     var spawnIntervalFactor: CGFloat = 1
+    /// Big Drops widens the catch radius. 1 = no ability.
+    var pickupRadiusFactor: CGFloat = 1
     private var rng: SeededRandomNumberGenerator
 
     init(seed: UInt64 = UInt64.random(in: .min ... .max)) {
@@ -82,8 +84,8 @@ struct PowerUpSystem {
         let paddleY = p.targetSide == .bottom ? 1.0 - GameConstants.paddleMarginY
                                               : GameConstants.paddleMarginY
         let halfH = GameConstants.paddleHeight / 2
-        let r = GameConstants.powerUpPickupRadius
-        let rY = GameConstants.powerUpPickupRadiusY
+        let r = GameConstants.powerUpPickupRadius * pickupRadiusFactor
+        let rY = GameConstants.powerUpPickupRadiusY * pickupRadiusFactor
         let halfW = paddleWidth(for: p.targetSide) / 2
         if abs(p.position.x - paddleX) <= halfW + r,
            abs(p.position.y - paddleY) <= halfH + rY {

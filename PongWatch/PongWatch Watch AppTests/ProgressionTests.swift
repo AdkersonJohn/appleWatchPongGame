@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import PongWatch_Watch_App
 
 final class PointsRulesTests: XCTestCase {
@@ -27,6 +28,48 @@ final class UnlockCatalogTests: XCTestCase {
     func test_everyItemHasAUniqueIDSoProgressCantCollide() {
         let ids = UnlockCatalog.all.map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
+    }
+
+    /// A full ten in every category, so no section looks half-finished.
+    func test_everyCategoryHasTenItems() {
+        for category in UnlockCategory.allCases {
+            let count = UnlockCatalog.all.filter { $0.category == category }.count
+            XCTAssertEqual(count, 10, "\(category.label) has \(count)")
+        }
+    }
+
+    /// Each item has to carry what it actually does, or it's a name and a
+    /// price with nothing behind it.
+    func test_everyItemCarriesItsEffect() {
+        for item in UnlockCatalog.all {
+            switch item.category {
+            case .paddleSkin, .ballSkin:
+                XCTAssertNotNil(item.color, "\(item.id) has no colour")
+            case .celebration:
+                XCTAssertNotNil(item.celebration, "\(item.id) has no celebration")
+            case .ability:
+                XCTAssertNotNil(item.ability, "\(item.id) does nothing")
+            case .title:
+                XCTAssertFalse(item.name.isEmpty)
+            }
+        }
+    }
+
+    /// Two skins that look the same are two prices for one thing.
+    func test_skinColoursAreAllDistinctWithinTheirCategory() {
+        for category in [UnlockCategory.paddleSkin, .ballSkin] {
+            let colours = UnlockCatalog.all.filter { $0.category == category }.compactMap { $0.color?.description }
+            XCTAssertEqual(Set(colours).count, colours.count, "\(category.label) repeats a colour")
+        }
+    }
+
+    func test_everyCelebrationAndAbilityIsUsedExactlyOnce() {
+        let styles = UnlockCatalog.all.compactMap(\.celebration)
+        XCTAssertEqual(Set(styles).count, styles.count, "a celebration is sold twice")
+        XCTAssertEqual(Set(styles).count, CelebrationStyle.allCases.count, "a celebration is unreachable")
+        let abilities = UnlockCatalog.all.compactMap(\.ability)
+        XCTAssertEqual(Set(abilities).count, abilities.count, "an ability is sold twice")
+        XCTAssertEqual(Set(abilities).count, Ability.allCases.count, "an ability is unreachable")
     }
 
     func test_thereIsSomethingToBuyInEveryCategory() {
