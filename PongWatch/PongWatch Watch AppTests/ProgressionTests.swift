@@ -274,3 +274,27 @@ final class MultiplayerProgressionTests: XCTestCase {
         XCTAssertLessThan(store.availablePoints, PointsRules.winBonus)
     }
 }
+
+final class CategoryProgressTests: XCTestCase {
+    private var store: ProgressionStore!
+
+    override func setUp() {
+        super.setUp()
+        store = ProgressionStore(defaults: UserDefaults(suiteName: "cat.\(UUID().uuidString)")!)
+    }
+
+    /// A collapsed section still has to say where you stand, or closing it
+    /// hides the only sense of progress.
+    func test_ownedCountStartsAtTheFreeDefaults() {
+        XCTAssertEqual(store.ownedCount(in: .paddleSkin), 1, "the free default is owned")
+        XCTAssertEqual(store.ownedCount(in: .ability), 0, "abilities have no free default")
+    }
+
+    func test_ownedCountRisesWithPurchases() {
+        let item = UnlockCatalog.all.first { $0.category == .ballSkin && $0.cost > 0 }!
+        store.award(item.cost)
+        _ = store.buy(item)
+        XCTAssertEqual(store.ownedCount(in: .ballSkin), 2)
+        XCTAssertEqual(store.totalCount(in: .ballSkin), 10)
+    }
+}

@@ -57,6 +57,15 @@ final class ProgressionStore {
         return true
     }
 
+    /// How many of a category are owned, for the collapsed section header.
+    func ownedCount(in category: UnlockCategory) -> Int {
+        UnlockCatalog.all.filter { $0.category == category && isUnlocked($0) }.count
+    }
+
+    func totalCount(in category: UnlockCategory) -> Int {
+        UnlockCatalog.all.filter { $0.category == category }.count
+    }
+
     // MARK: - Equipped
 
     private var equippedByCategory: [String: String] {

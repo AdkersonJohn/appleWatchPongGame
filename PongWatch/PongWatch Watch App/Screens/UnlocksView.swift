@@ -2,12 +2,15 @@ import SwiftUI
 
 /// Spend points on celebrations, skins, titles and abilities.
 ///
-/// One flat list grouped by category: on a 40mm screen a tab bar or grid costs
-/// more taps than it saves, and every row has to say price and state on its own
-/// because there is no room for a legend.
+/// Fifty items is far too long to scroll on a watch, so each category is a
+/// collapsed row you open with the triangle. A closed row still reports how
+/// many you own, because otherwise collapsing hides the only sense of
+/// progress. Everything starts closed: the list should open as five rows, not
+/// a wall.
 struct UnlocksView: View {
     let onBack: () -> Void
     @State private var store = ProgressionStore()
+    @State private var expanded: Set<UnlockCategory> = []
     /// Bumped on every purchase so the list redraws; the store is plain
     /// UserDefaults rather than an observable object.
     @State private var revision = 0
@@ -16,7 +19,7 @@ struct UnlocksView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             ScrollView {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     Text("\(store.availablePoints) pts")
                         .font(.title3).bold()
                         .foregroundColor(.yellow)
@@ -25,21 +28,7 @@ struct UnlocksView: View {
                         .foregroundColor(.white.opacity(0.5))
 
                     ForEach(UnlockCategory.allCases, id: \.self) { category in
-                        VStack(spacing: 4) {
-                            Text(category.label)
-                                .font(.caption).bold()
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if category == .ability {
-                                Text("Single player only")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.white.opacity(0.4))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            ForEach(UnlockCatalog.all.filter { $0.category == category }) { item in
-                                row(for: item)
-                            }
-                        }
+                        section(for: category)
                     }
 
                     Button("Back", action: onBack)
@@ -51,6 +40,52 @@ struct UnlocksView: View {
             }
         }
         .id(revision)
+    }
+
+    @ViewBuilder
+    private func section(for category: UnlockCategory) -> some View {
+        let isOpen = expanded.contains(category)
+
+        VStack(spacing: 4) {
+            Button {
+                if isOpen { expanded.remove(category) } else { expanded.insert(category) }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.8))
+                        // One triangle that turns, so the open and closed
+                        // states are obviously the same control.
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Text(category.label)
+                        .font(.caption).bold()
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("\(store.ownedCount(in: category))/\(store.totalCount(in: category))")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+                .background(Color.white.opacity(0.10))
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 0.15), value: isOpen)
+
+            if isOpen {
+                if category == .ability {
+                    Text("Single player only")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.4))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(UnlockCatalog.all.filter { $0.category == category }) { item in
+                    row(for: item)
+                }
+            }
+        }
     }
 
     @ViewBuilder
