@@ -16,6 +16,22 @@ enum MPIssue {
     }
 }
 
+/// Which pairing screen a connection state should show. Pure so the mapping
+/// can be tested; an invite that shows nothing is the bug this exists to stop.
+enum PairingScreen: Equatable {
+    case lobby
+    case invitePrompt(String)
+    case waitingForAccept
+
+    static func screen(for state: MPConnectionState) -> PairingScreen {
+        switch state {
+        case .receivingInvite(let name): return .invitePrompt(name)
+        case .inviting:                  return .waitingForAccept
+        default:                         return .lobby
+        }
+    }
+}
+
 enum MPConnectionState: Equatable {
     case idle
     case discovering

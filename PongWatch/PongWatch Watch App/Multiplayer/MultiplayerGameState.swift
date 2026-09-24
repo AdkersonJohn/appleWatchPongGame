@@ -45,6 +45,12 @@ final class MultiplayerGameState: ObservableObject {
     private var lastPeerActivityAt: Date?
     private var peerSilenceTimeout: Double = GameConstants.peerSilenceTimeoutSeconds
 
+    /// Playfield width/height both sides play on, agreed at match start. nil
+    /// until then, which means "use this device's own screen".
+    @Published private(set) var fieldAspect: CGFloat? = nil
+    /// "watch" or "phone" as announced by the peer; nil until `.hello` lands.
+    private(set) var peerPlatform: String? = nil
+
     /// Score required to win, agreed on the configuration screen. nil means
     /// no win condition (match only ends on disconnect/leave/forfeit).
     private(set) var winningScore: Int? = nil
@@ -82,6 +88,9 @@ final class MultiplayerGameState: ObservableObject {
             if matchPhase == .pairing {
                 // Watchdog stays disarmed until the first real peer message.
                 lastPeerActivityAt = nil
+                // Both sides announce what they are; the host needs it to pick
+                // the field shape before the match starts.
+                service.send(.hello(platform: MPDiag.platformTag), reliable: true)
                 if newRole == .host {
                     // Host's TCP completed but the client may not have tapped
                     // Accept yet. Hold on the waiting view until .clientReady.
@@ -163,10 +172,24 @@ final class MultiplayerGameState: ObservableObject {
             if matchPhase == .waitingForOpponentAccept {
                 matchPhase = .configuringMatch
             }
+        case .hello(let platform):
+            peerPlatform = platform
+            MPDiag.shared.event("peer is a \(platform)")
+        case .fieldShape(let aspect):
+            applyFieldAspect(aspect)
         case .stickyRelease:
             guard service.role == .host else { return }
             game.tapRelease(side: .top)
         }
+    }
+
+    /// Both sides scale their physics to the agreed shape, or the ball lands
+    /// in different places on the two screens.
+    private func applyFieldAspect(_ aspect: CGFloat) {
+        fieldAspect = aspect
+        GameConstants.verticalScale = FieldShape.verticalScale(forAspect: aspect)
+        MPDiag.shared.event(String(format: "field shape %.3f (verticalScale %.3f)",
+                                   aspect, GameConstants.verticalScale))
     }
 
     /// Screen tap during MP play. Host releases locally; client asks the host.
@@ -182,6 +205,14 @@ final class MultiplayerGameState: ObservableObject {
     /// Stores the choice, broadcasts it to the client, and starts the match.
     func startMatch(winningScore target: Int?) {
         guard service.role == .host, matchPhase == .configuringMatch else { return }
+        // A watch on either side shrinks the field to the watch's shape, so
+        // both players see the same playfield rather than two different games.
+        let aspect = FieldShape.agreed(
+            hostIsWatch: MPDiag.platformTag == "watch",
+            clientIsWatch: peerPlatform == "watch",
+            hostAspect: GameConstants.verticalScale * GameConstants.watchPlayfieldAspect)
+        applyFieldAspect(aspect)
+        service.send(.fieldShape(aspect: aspect), reliable: true)
         winningScore = target
         service.send(.startMatch(winningScore: target), reliable: true)
         resetMatchProgress()

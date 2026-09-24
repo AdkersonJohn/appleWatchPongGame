@@ -47,6 +47,9 @@ struct CrownHaptics {
 
 struct GameView: View {
     @ObservedObject var state: GameState
+    /// Playfield width/height agreed with the opponent. nil in single player,
+    /// where the device's own screen decides.
+    var matchAspect: CGFloat? = nil
     @Environment(\.scenePhase) private var scenePhase
     /// Bound because the modifier requires it; the event velocity is what drives
     /// the paddle, not this accumulated value.
@@ -82,6 +85,7 @@ struct GameView: View {
                 // sizes so paddles and hitboxes match the watch's proportions.
                 .onAppear { updateVerticalScale(geo.size) }
                 .onChange(of: geo.size) { _, size in updateVerticalScale(size) }
+                .onChange(of: matchAspect) { _, _ in updateVerticalScale(geo.size) }
                 #endif
             }
             #if os(watchOS)
@@ -108,6 +112,10 @@ struct GameView: View {
             .padding(.leading, 4)
         }
         #if !os(watchOS)
+        // A match against a watch is played on the watch's shape, so the phone
+        // letterboxes to it; phone-to-phone keeps the full-height field.
+        .aspectRatio(matchAspect, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Inside the safe area so the top paddle clears the Dynamic Island
         // and the bottom one clears the home indicator.
         .background(Color.black.ignoresSafeArea())
@@ -176,6 +184,9 @@ struct GameView: View {
 
     #if !os(watchOS)
     private func updateVerticalScale(_ size: CGSize) {
+        // In a match the opponent's shape wins; MultiplayerGameState already
+        // set the scale to match, so don't fight it with this screen's own.
+        if matchAspect != nil { return }
         guard size.width > 0, size.height > 0 else { return }
         GameConstants.verticalScale = (size.width / size.height) / GameConstants.watchPlayfieldAspect
     }

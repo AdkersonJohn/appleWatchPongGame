@@ -17,6 +17,12 @@ enum NetworkMessage: Codable, Equatable {
     /// on its waiting view until this arrives so the score picker can't open
     /// while the invite is still pending.
     case clientReady
+    /// Sent by both sides as soon as the link is up: "watch" or "phone".
+    /// The host needs the client's platform to choose the field shape.
+    case hello(platform: String)
+    /// Host → client just before `.startMatch`: the agreed playfield
+    /// width/height. Both sides scale their physics to it.
+    case fieldShape(aspect: CGFloat)
     /// Client → host: the client tapped its screen to release a stuck ball.
     /// Host validates (no-op unless the client's side actually holds one).
     case stickyRelease
@@ -94,4 +100,22 @@ struct PaddleInput: Codable, Equatable {
 struct ScoreEvent: Codable, Equatable {
     var impactX: CGFloat
     var scoredBy: PeerRole
+}
+
+/// Picks the playfield shape a cross-device match is played on.
+///
+/// The two devices must agree, because the host simulates physics in
+/// normalized coordinates and the client renders them. A watch in the match
+/// forces the watch's shape: a tall phone field squeezed onto a watch is
+/// unplayable, while a phone can letterbox the watch's shape perfectly well.
+enum FieldShape {
+    static func agreed(hostIsWatch: Bool, clientIsWatch: Bool, hostAspect: CGFloat) -> CGFloat {
+        (hostIsWatch || clientIsWatch) ? GameConstants.watchPlayfieldAspect : hostAspect
+    }
+
+    /// Converts an agreed width/height into the factor that keeps height-based
+    /// sizes looking the same as they do on the watch.
+    static func verticalScale(forAspect aspect: CGFloat) -> CGFloat {
+        aspect / GameConstants.watchPlayfieldAspect
+    }
 }

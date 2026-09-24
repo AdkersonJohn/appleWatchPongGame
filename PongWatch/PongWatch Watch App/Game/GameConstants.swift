@@ -19,6 +19,11 @@ enum GameConstants {
     // Width/height of the 46mm watch screen the physics were tuned on.
     static let watchPlayfieldAspect: CGFloat = 416.0 / 496.0
 
+    /// Seconds to wait for an invited peer's connection before giving up. Long
+    /// enough for a slow peer-to-peer link to come up, short enough that a dead
+    /// one doesn't look like a hung app.
+    static let inviteTimeoutSeconds: Double = 20
+
     // Vertical placement of paddles (as fraction from top/bottom)
     static let paddleMarginY: CGFloat = 0.05
 
@@ -106,7 +111,7 @@ enum GameConstants {
     static let mcServiceType: String = "pongwatch"
 
     /// Protocol version included in every MP message. Bump when the wire format changes.
-    static let multiplayerProtocolVersion: UInt8 = 2
+    static let multiplayerProtocolVersion: UInt8 = 3
 
     // MARK: - Power-ups
 
