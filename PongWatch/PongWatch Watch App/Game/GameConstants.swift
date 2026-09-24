@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 
 enum GameConstants {
     // Paddle dimensions as fractions of screen size
@@ -18,6 +19,11 @@ enum GameConstants {
 
     // Width/height of the 46mm watch screen the physics were tuned on.
     static let watchPlayfieldAspect: CGFloat = 416.0 / 496.0
+
+    /// Seconds to wait for an invited peer's connection before giving up. Long
+    /// enough for a slow peer-to-peer link to come up, short enough that a dead
+    /// one doesn't look like a hung app.
+    static let inviteTimeoutSeconds: Double = 20
 
     // Vertical placement of paddles (as fraction from top/bottom)
     static let paddleMarginY: CGFloat = 0.05
@@ -44,9 +50,9 @@ enum GameConstants {
     static let aiSpeedFactorCap: CGFloat = 2.0
 
     /// AI paddle speed after the player has scored `playerScore` times.
-    static func aiSpeed(playerScore: Int) -> CGFloat {
+    static func aiSpeed(playerScore: Int, rampFactor: CGFloat = 1) -> CGFloat {
         let factor = min(aiSpeedFactorCap,
-                         1 + aiSpeedIncreasePerPoint * CGFloat(max(0, playerScore)))
+                         1 + aiSpeedIncreasePerPoint * rampFactor * CGFloat(max(0, playerScore)))
         return aiMaxSpeed * factor
     }
 
@@ -66,6 +72,40 @@ enum GameConstants {
     // higher cap reads as buzz even though the clicks are mechanically spaced.
     static let crownHapticStep: CGFloat = 0.10
     static let crownHapticMinInterval: Double = 0.14
+
+    /// Length of the serve-direction preview, as a fraction of field height.
+    /// Long enough to read at a glance, short enough not to reach a paddle and
+    /// look like it's predicting the whole rally.
+    static let servePreviewLength: CGFloat = 0.22
+    /// Gap before the dashes start, so they clear the countdown digit drawn
+    /// in the middle of the field rather than running through it.
+    static let servePreviewInset: CGFloat = 0.10
+
+    // Unlockable skin colours, kept here so the catalog and the renderer can't
+    // drift apart.
+    static let goldPaddle = Color(red: 1.00, green: 0.78, blue: 0.20)
+    static let neonPaddle = Color(red: 0.30, green: 1.00, blue: 0.45)
+    static let emberBall = Color(red: 1.00, green: 0.50, blue: 0.15)
+    static let iceBall = Color(red: 0.55, green: 0.85, blue: 1.00)
+    /// How much wider the Long Paddle ability makes the player's paddle.
+    static let longPaddleFactor: CGFloat = 1.25
+    /// Lucky Drops shortens the wait between power-ups by this factor.
+    static let luckyDropsFactor: CGFloat = 0.6
+
+    // Impact sparks — the small white flash where the ball meets a paddle or
+    // wall. Deliberately fewer, smaller and shorter-lived than the scoring
+    // burst: this fires several times a rally, so it has to read as a tick of
+    // feedback rather than a firework.
+    static let impactSparkCount: Int = 5
+    static let impactSparkMinSpeed: CGFloat = 0.25
+    static let impactSparkMaxSpeed: CGFloat = 0.65
+    static let impactSparkMinLifespan: CGFloat = 0.10
+    static let impactSparkMaxLifespan: CGFloat = 0.22
+    /// Fraction of ballRadius. Smaller than the scoring burst's specks.
+    static let impactSparkRadiusFactor: CGFloat = 0.30
+    /// Half-angle of the spray cone around the surface normal. A wide fan
+    /// looks like an explosion; this keeps it hugging the surface.
+    static let impactSparkSpread: CGFloat = .pi / 3
 
     // Scoring burst
     static let particlesPerBurst: Int = 20
@@ -106,7 +146,7 @@ enum GameConstants {
     static let mcServiceType: String = "pongwatch"
 
     /// Protocol version included in every MP message. Bump when the wire format changes.
-    static let multiplayerProtocolVersion: UInt8 = 2
+    static let multiplayerProtocolVersion: UInt8 = 3
 
     // MARK: - Power-ups
 

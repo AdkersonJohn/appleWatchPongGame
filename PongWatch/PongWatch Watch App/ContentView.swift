@@ -3,6 +3,7 @@ import SwiftUI
 enum GameMode {
     case singlePlayer
     case multiplayer
+    case unlocks
 }
 
 struct ContentView: View {
@@ -31,7 +32,8 @@ struct ContentView: View {
                     },
                     onStartMultiplayer: {
                         mode = .multiplayer
-                    }
+                    },
+                    onOpenUnlocks: { mode = .unlocks }
                 )
 
             case .singlePlayer:
@@ -39,7 +41,8 @@ struct ContentView: View {
                 case .start:
                     StartView(
                         onStartSinglePlayer: { singlePlayerState.startGame() },
-                        onStartMultiplayer: { mode = .multiplayer }
+                        onStartMultiplayer: { mode = .multiplayer },
+                        onOpenUnlocks: { mode = .unlocks }
                     )
                 case .playing:
                     GameView(state: singlePlayerState)
@@ -56,6 +59,9 @@ struct ContentView: View {
                     )
                 }
 
+            case .unlocks:
+                UnlocksView(onBack: { mode = nil })
+
             case .multiplayer:
                 multiplayerRoot
             }
@@ -66,7 +72,8 @@ struct ContentView: View {
     private var multiplayerRoot: some View {
         switch mpState.matchPhase {
         case .pairing:
-            if case .receivingInvite(let name) = mpService.connectionState {
+            switch PairingScreen.screen(for: mpService.connectionState) {
+            case .invitePrompt(let name):
                 InvitePromptView(
                     peerName: name,
                     onAccept: { mpService.respondToInvite(accept: true) },
@@ -75,7 +82,11 @@ struct ContentView: View {
                         mode = nil
                     }
                 )
-            } else {
+            case .waitingForAccept:
+                // Without this the lobby stayed up while the invite connected,
+                // so tapping a peer looked like nothing happened at all.
+                WaitingForAcceptView(onCancel: { mpService.disconnect() })
+            case .lobby:
                 NearbyPlayersView(service: mpService, onBack: {
                     mpService.disconnect()
                     mode = nil
@@ -98,6 +109,7 @@ struct ContentView: View {
         case .playing, .pausedByOpponent:
             GameView(
                 state: mpState.game,
+                matchAspect: mpState.fieldAspect,
                 multiplayerScores: (mine: myScore, opp: oppScore),
                 onTick: { dt in mpState.tick(dt: dt) },
                 onCrownChange: { v in mpState.setLocalPaddle(normalizedCrown: v) },

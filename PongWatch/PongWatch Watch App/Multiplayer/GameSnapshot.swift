@@ -17,9 +17,24 @@ enum NetworkMessage: Codable, Equatable {
     /// on its waiting view until this arrives so the score picker can't open
     /// while the invite is still pending.
     case clientReady
+    /// Sent by both sides as soon as the link is up: "watch" or "phone".
+    /// The host needs the client's platform to choose the field shape.
+    case hello(platform: String)
+    /// Host → client just before `.startMatch`: the agreed playfield
+    /// width/height. Both sides scale their physics to it.
+    case fieldShape(aspect: CGFloat)
     /// Client → host: the client tapped its screen to release a stuck ball.
     /// Host validates (no-op unless the client's side actually holds one).
     case stickyRelease
+}
+
+/// Guards against two devices running different builds, which is the likeliest
+/// way a watch-to-phone match fails: the link connects and then nothing moves.
+enum ProtoCheck {
+    static func isCompatible(_ theirs: UInt8,
+                             ours: UInt8 = GameConstants.multiplayerProtocolVersion) -> Bool {
+        theirs == ours
+    }
 }
 
 struct BallState: Codable, Equatable {
@@ -71,6 +86,12 @@ struct GameSnapshot: Codable, Equatable {
     var stuckSide: PeerRole?
     /// Monotonic tick sequence; receiver discards out-of-order snapshots.
     var tickSeq: UInt32
+    /// Non-nil for exactly one snapshot after the ball hit a side wall.
+    var wallImpact: WallImpact? = nil
+    /// The serve the host has queued during a countdown, in host space, so the
+    /// client can draw the same preview instead of guessing.
+    var pendingServeVX: CGFloat? = nil
+    var pendingServeVY: CGFloat? = nil
 }
 
 /// Client → host at 30Hz; reports the client's crown-controlled paddle position.
@@ -82,7 +103,34 @@ struct PaddleInput: Codable, Equatable {
     var tickSeq: UInt32
 }
 
+/// Where the ball met a side wall on the host's tick. The client can't derive
+/// this — it renders the host's physics — so without it a wall bounce shows an
+/// impact on one screen and nothing on the other.
+struct WallImpact: Codable, Equatable {
+    var x: CGFloat
+    var y: CGFloat
+    var onLeft: Bool
+}
+
 struct ScoreEvent: Codable, Equatable {
     var impactX: CGFloat
     var scoredBy: PeerRole
+}
+
+/// Picks the playfield shape a cross-device match is played on.
+///
+/// The two devices must agree, because the host simulates physics in
+/// normalized coordinates and the client renders them. A watch in the match
+/// forces the watch's shape: a tall phone field squeezed onto a watch is
+/// unplayable, while a phone can letterbox the watch's shape perfectly well.
+enum FieldShape {
+    static func agreed(hostIsWatch: Bool, clientIsWatch: Bool, hostAspect: CGFloat) -> CGFloat {
+        (hostIsWatch || clientIsWatch) ? GameConstants.watchPlayfieldAspect : hostAspect
+    }
+
+    /// Converts an agreed width/height into the factor that keeps height-based
+    /// sizes looking the same as they do on the watch.
+    static func verticalScale(forAspect aspect: CGFloat) -> CGFloat {
+        aspect / GameConstants.watchPlayfieldAspect
+    }
 }

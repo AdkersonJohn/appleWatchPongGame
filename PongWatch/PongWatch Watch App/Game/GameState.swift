@@ -25,6 +25,14 @@ final class GameState: ObservableObject {
     @Published var lastRunWasRecord: Bool = false
     // nil = no countdown, ball is in play. Otherwise the number (3, 2, 1) to show.
     @Published var countdownRemaining: Int?
+    /// Where the ball will go when the countdown ends, decided up front so
+    /// both players can see the serve direction before it moves. nil while the
+    /// ball is in play.
+    @Published private(set) var pendingServe: CGVector?
+    /// How a scored point is celebrated. Cosmetic, so it applies in every mode.
+    /// Read from the injected store so a game built with a fresh store behaves
+    /// the same everywhere, rather than inheriting whatever this device owns.
+    var celebration: CelebrationStyle
     @Published var particles: [Particle] = []
     @Published private(set) var powerUps = PowerUpSystem()
     @Published private(set) var stuckBall: StuckBall?
@@ -41,6 +49,23 @@ final class GameState: ObservableObject {
     var bottomExitScoresOpponent: Bool = false
     private(set) var opponentScoredThisTick: Int = 0
     private(set) var bottomPaddleHitThisTick: Bool = false
+    /// Single-player tuning from the equipped ability. Neutral in multiplayer.
+    private(set) var tuning = AbilityTuning()
+    /// How much the ball speeds up per tier, after any ability. Exposed so the
+    /// effect is checkable without replaying a whole rally.
+    var speedIncreasePerTier: CGFloat { GameConstants.speedIncreasePerTier * tuning.speedTierFactor }
+    /// How long a caught ball can be held, after any ability.
+    var stickyHoldSeconds: CGFloat { GameConstants.stickyHoldSeconds * tuning.stickyHoldFactor }
+    /// The AI's current paddle speed, after any ability.
+    func aiSpeedNow(playerScore: Int) -> CGFloat {
+        let ramped = GameConstants.aiSpeed(playerScore: playerScore,
+                                           rampFactor: tuning.aiRampFactor)
+        return ramped * tuning.aiSpeedFactor
+    }
+
+    /// Where a side wall was struck this tick, for the multiplayer snapshot.
+    private(set) var wallHitThisTick: CGPoint?
+    private(set) var wallHitWasLeft: Bool = false
     private(set) var topPaddleHitThisTick: Bool = false
 
     private var currentBallSpeed: CGFloat = GameConstants.initialBallSpeed
@@ -50,11 +75,15 @@ final class GameState: ObservableObject {
     private var hitCount: Int = 0
     private let highScoreStore: HighScoreStore
     private let hapticPlayer: HapticPlayer
+    private let progression: ProgressionStore
 
     init(highScoreStore: HighScoreStore = HighScoreStore(),
-         hapticPlayer: HapticPlayer = WatchHapticPlayer()) {
+         hapticPlayer: HapticPlayer = WatchHapticPlayer(),
+         progression: ProgressionStore = ProgressionStore()) {
         self.highScoreStore = highScoreStore
         self.hapticPlayer = hapticPlayer
+        self.progression = progression
+        self.celebration = UnlockEffects(store: progression).celebration
         self.balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         self.playerPaddleX = 0.5
         self.aiPaddleX = 0.5
@@ -65,11 +94,13 @@ final class GameState: ObservableObject {
         score = 0
         lastRunWasRecord = false
         currentBallSpeed = GameConstants.initialBallSpeed
+        tuning = AbilityTuning()
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         playerPaddleX = 0.5
         aiPaddleX = 0.5
         countdownRemaining = nil
         countdownElapsed = 0
+        pendingServe = nil
         particles = []
         hitCount = 0
         powerUps.reset()
@@ -80,8 +111,28 @@ final class GameState: ObservableObject {
 
     func startGame() {
         reset()
+        applyEquippedAbilities()
         phase = .playing
         startCountdown()
+    }
+
+    /// Abilities are single-player only: `topSideIsAI` is false exactly when
+    /// the other paddle is a person, and nobody should lose to someone else's
+    /// unlocks rather than their own play.
+    private func applyEquippedAbilities() {
+        tuning = AbilityTuning()
+        powerUps.baseWidthFactor = 1
+        powerUps.spawnIntervalFactor = 1
+        powerUps.pickupRadiusFactor = 1
+        guard topSideIsAI else { return }
+
+        tuning = AbilityTuning.for(UnlockEffects(store: progression).ability)
+        if tuning.startsWithShield { powerUps.grant(.shield, to: .bottom) }
+        if tuning.startsWithSticky { powerUps.grant(.stickyBall, to: .bottom) }
+        powerUps.baseWidthFactor = tuning.paddleWidthFactor
+        powerUps.spawnIntervalFactor = tuning.spawnIntervalFactor
+        powerUps.pickupRadiusFactor = tuning.pickupRadiusFactor
+        currentBallSpeed = GameConstants.initialBallSpeed * tuning.ballSpeedFactor
     }
 
     /// Public entry point used by multiplayer to start a fresh serve.
@@ -90,6 +141,7 @@ final class GameState: ObservableObject {
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        pendingServe = randomInitialVelocity(speed: currentBallSpeed)
         powerUps.clearPickup()
         stuckBall = nil
         remoteStuckSide = nil
@@ -106,6 +158,7 @@ final class GameState: ObservableObject {
         opponentScoredThisTick = 0
         bottomPaddleHitThisTick = false
         topPaddleHitThisTick = false
+        wallHitThisTick = nil
 
         updateParticles(dt: dt)
 
@@ -146,10 +199,16 @@ final class GameState: ObservableObject {
             if balls[i].position.x < GameConstants.ballRadius {
                 balls[i].position.x = GameConstants.ballRadius
                 balls[i].velocity.dx = -balls[i].velocity.dx
+                spawnImpactSparks(at: balls[i].position, awayFrom: .leftWall)
+                wallHitThisTick = balls[i].position
+                wallHitWasLeft = true
             }
             if balls[i].position.x > 1.0 - GameConstants.ballRadius {
                 balls[i].position.x = 1.0 - GameConstants.ballRadius
                 balls[i].velocity.dx = -balls[i].velocity.dx
+                spawnImpactSparks(at: balls[i].position, awayFrom: .rightWall)
+                wallHitThisTick = balls[i].position
+                wallHitWasLeft = false
             }
 
             // Player paddle (bottom)
@@ -164,12 +223,13 @@ final class GameState: ObservableObject {
                     stickBall(at: i, to: .bottom)
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: playerPaddleX)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .bottom)
                     hapticPlayer.playClick()
                     bottomPaddleHitThisTick = true
                     hitCount += 1
                     if hitCount % GameConstants.hitsPerSpeedTier == 0,
                        currentBallSpeed < GameConstants.maxBallSpeed {
-                        let bumped = currentBallSpeed * (1 + GameConstants.speedIncreasePerTier)
+                        let bumped = currentBallSpeed * (1 + speedIncreasePerTier)
                         currentBallSpeed = min(bumped, GameConstants.maxBallSpeed)
                         rescaleBallSpeed(ballIndex: i, to: currentBallSpeed)
                     }
@@ -188,6 +248,7 @@ final class GameState: ObservableObject {
                     stickBall(at: i, to: .top)
                 } else {
                     bouncePaddleHit(ballIndex: i, paddleX: aiPaddleX)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .top)
                     topPaddleHitThisTick = true
                 }
             }
@@ -201,7 +262,7 @@ final class GameState: ObservableObject {
         let aiDelta = targetX - aiPaddleX
         // Single-player only: the AI reacts faster the more the player has
         // scored on it. In multiplayer the top paddle is a human, so leave it.
-        let aiSpeed = topSideIsAI ? GameConstants.aiSpeed(playerScore: score)
+        let aiSpeed = topSideIsAI ? aiSpeedNow(playerScore: score)
                                   : GameConstants.aiMaxSpeed
         let maxStep = aiSpeed * dt
         let step: CGFloat
@@ -225,6 +286,7 @@ final class GameState: ObservableObject {
                     powerUps.consumeShield(for: .top)
                     balls[i].position.y = 0
                     balls[i].velocity.dy = abs(balls[i].velocity.dy)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .top)
                 } else {
                     score += 1
                     spawnScoreBurst(atX: b.position.x)
@@ -236,6 +298,7 @@ final class GameState: ObservableObject {
                     powerUps.consumeShield(for: .bottom)
                     balls[i].position.y = 1.0
                     balls[i].velocity.dy = -abs(balls[i].velocity.dy)
+                    spawnImpactSparks(at: balls[i].position, awayFrom: .bottom)
                 } else if bottomExitScoresOpponent {
                     opponentScoredThisTick += 1
                     if balls.count == 1 { startCountdown(); return }
@@ -245,6 +308,11 @@ final class GameState: ObservableObject {
                 } else {
                     lastRunWasRecord = highScoreStore.updateIfHigher(newScore: score)
                     phase = .gameOver
+                    // Banked once, here, because this is the only place a
+                    // single-player game ends.
+                    progression.award(PointsRules.award(scored: score,
+                                                        won: false,
+                                                        newHighScore: lastRunWasRecord))
                     return
                 }
             }
@@ -297,7 +365,7 @@ final class GameState: ObservableObject {
         let offset = max(-halfW, min(halfW, balls[index].position.x - paddleX))
         let hold = (side == .top && topSideIsAI)
             ? GameConstants.aiStickyHoldSeconds
-            : GameConstants.stickyHoldSeconds
+            : stickyHoldSeconds
         stuckBall = StuckBall(side: side, offset: offset, holdRemaining: hold, ballIndex: index)
         balls[index].velocity = .zero
     }
@@ -328,35 +396,82 @@ final class GameState: ObservableObject {
         balls[stuck.ballIndex].velocity = CGVector(dx: dx, dy: stuck.side == .bottom ? -dyMag : dyMag)
     }
 
+    /// Client-side only: mirror the host's queued serve so both screens show
+    /// the same preview.
+    func setPendingServeForRemote(_ serve: CGVector?) { pendingServe = serve }
+
     /// Tap-to-release entry point (GameView tap / MP stickyRelease message).
     func tapRelease(side: PaddleSide) {
         guard let stuck = stuckBall, stuck.side == side else { return }
         releaseStuckBall()
     }
 
+    /// Which way an impact's sparks fly: away from the surface that was hit.
+    enum ImpactSurface {
+        case bottom, top, leftWall, rightWall
+
+        /// Unit vector pointing back into the playfield.
+        var normal: CGVector {
+            switch self {
+            case .bottom:    return CGVector(dx: 0, dy: -1)
+            case .top:       return CGVector(dx: 0, dy: 1)
+            case .leftWall:  return CGVector(dx: 1, dy: 0)
+            case .rightWall: return CGVector(dx: -1, dy: 0)
+            }
+        }
+    }
+
+    /// A small white spray at the point of contact, thrown back into the field.
+    /// Appended rather than replacing `particles`, so a hit during a scoring
+    /// burst doesn't wipe the burst out from under itself.
+    func spawnImpactSparks(at point: CGPoint, awayFrom surface: ImpactSurface) {
+        let normal = surface.normal
+        let baseAngle = atan2(normal.dy, normal.dx)
+        for _ in 0..<GameConstants.impactSparkCount {
+            let angle = baseAngle + CGFloat.random(in: -GameConstants.impactSparkSpread...GameConstants.impactSparkSpread)
+            let speed = CGFloat.random(in: GameConstants.impactSparkMinSpeed...GameConstants.impactSparkMaxSpeed)
+            let lifespan = CGFloat.random(in: GameConstants.impactSparkMinLifespan...GameConstants.impactSparkMaxLifespan)
+            particles.append(Particle(
+                position: point,
+                velocity: CGVector(dx: cos(angle) * speed, dy: sin(angle) * speed),
+                ageRemaining: lifespan,
+                totalAge: lifespan,
+                radius: GameConstants.ballRadius * GameConstants.impactSparkRadiusFactor,
+                red: 1, green: 1, blue: 1
+            ))
+        }
+    }
+
     func spawnScoreBurst(atX x: CGFloat) {
         let origin = CGPoint(x: x, y: 0.0)
+        let spec = CelebrationSpec.for(celebration)
         var newParticles: [Particle] = []
-        newParticles.reserveCapacity(GameConstants.particlesPerBurst)
+        newParticles.reserveCapacity(spec.count)
 
-        for _ in 0..<GameConstants.particlesPerBurst {
-            // Direction: dx in [-1, 1], dy in [0.1, 1] — biases burst into the playfield.
-            let rawDx = CGFloat.random(in: -1...1)
-            let rawDy = CGFloat.random(in: 0.1...1.0)
-            let mag = hypot(rawDx, rawDy)
-            let ux = rawDx / mag
-            let uy = rawDy / mag
+        for i in 0..<spec.count {
+            let ux: CGFloat, uy: CGFloat
+            if spec.isRing {
+                // Evenly spaced so it reads as an expanding ring, not a spray.
+                let angle = (CGFloat(i) / CGFloat(spec.count)) * 2 * .pi
+                ux = cos(angle); uy = abs(sin(angle))
+            } else {
+                // dx in [-1, 1], dy in [0.1, 1] — biases the burst into the playfield.
+                let rawDx = CGFloat.random(in: -1...1)
+                let rawDy = CGFloat.random(in: 0.1...1.0)
+                let mag = hypot(rawDx, rawDy)
+                ux = rawDx / mag; uy = rawDy / mag
+            }
 
-            let speed = CGFloat.random(in: GameConstants.particleMinSpeed...GameConstants.particleMaxSpeed)
-            let lifespan = CGFloat.random(in: GameConstants.particleMinLifespan...GameConstants.particleMaxLifespan)
-            let color = GameConstants.particlePalette.randomElement()!
+            let speed = spec.isRing ? spec.maxSpeed : CGFloat.random(in: spec.minSpeed...spec.maxSpeed)
+            let lifespan = CGFloat.random(in: spec.minLifespan...spec.maxLifespan)
+            let color = spec.palette.randomElement()!
 
             newParticles.append(Particle(
                 position: origin,
                 velocity: CGVector(dx: ux * speed, dy: uy * speed),
                 ageRemaining: lifespan,
                 totalAge: lifespan,
-                radius: GameConstants.ballRadius * GameConstants.particleRadiusFactor,
+                radius: GameConstants.ballRadius * spec.radiusFactor,
                 red: color.0,
                 green: color.1,
                 blue: color.2
@@ -379,6 +494,7 @@ final class GameState: ObservableObject {
         balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         countdownRemaining = GameConstants.countdownStart
         countdownElapsed = 0
+        pendingServe = randomInitialVelocity(speed: currentBallSpeed)
         powerUps.clearPickup()
         stuckBall = nil
         remoteStuckSide = nil
@@ -395,7 +511,9 @@ final class GameState: ObservableObject {
             countdownRemaining = remaining
         } else {
             countdownRemaining = nil
-            balls[0].velocity = randomInitialVelocity(speed: currentBallSpeed)
+            // Launch along exactly what was previewed, or the arrow lied.
+            balls[0].velocity = pendingServe ?? randomInitialVelocity(speed: currentBallSpeed)
+            pendingServe = nil
         }
     }
 

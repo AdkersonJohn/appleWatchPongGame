@@ -12,7 +12,7 @@ struct WaitingForAcceptView: View {
                 Text("Waiting for opponent")
                     .font(.headline)
                     .foregroundColor(.white)
-                Text("Invite sent — they need to accept on their watch")
+                Text("Invite sent — they need to accept on their device")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)

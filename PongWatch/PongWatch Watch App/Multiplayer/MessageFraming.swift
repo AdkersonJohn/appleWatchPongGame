@@ -14,6 +14,9 @@ enum MessageFraming {
     /// Parser that accumulates bytes and emits complete messages as they arrive.
     final class Decoder {
         private var buffer = Data()
+        /// Payloads that framed correctly but didn't decode — a version skew
+        /// between two devices looks like silence without this.
+        private(set) var failureCount = 0
 
         /// Append newly-received bytes; returns any complete messages decoded from the buffer.
         func feed(_ chunk: Data) -> [NetworkMessage] {
@@ -30,8 +33,9 @@ enum MessageFraming {
                 buffer.removeSubrange(0..<(4 + Int(len)))
                 if let msg = try? JSONDecoder().decode(NetworkMessage.self, from: payload) {
                     results.append(msg)
+                } else {
+                    failureCount += 1   // bytes already consumed; keep parsing the stream
                 }
-                // If decode fails, we've already consumed the bytes — drop and continue.
             }
             return results
         }

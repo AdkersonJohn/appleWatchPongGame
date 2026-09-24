@@ -47,6 +47,12 @@ struct CrownHaptics {
 
 struct GameView: View {
     @ObservedObject var state: GameState
+    /// Playfield width/height agreed with the opponent. nil in single player,
+    /// where the device's own screen decides.
+    var matchAspect: CGFloat? = nil
+    /// Equipped skins. Cosmetics apply in every mode, so this is read the same
+    /// way whether the opponent is the AI or a person.
+    private let skins = UnlockEffects()
     @Environment(\.scenePhase) private var scenePhase
     /// Bound because the modifier requires it; the event velocity is what drives
     /// the paddle, not this accumulated value.
@@ -82,6 +88,7 @@ struct GameView: View {
                 // sizes so paddles and hitboxes match the watch's proportions.
                 .onAppear { updateVerticalScale(geo.size) }
                 .onChange(of: geo.size) { _, size in updateVerticalScale(size) }
+                .onChange(of: matchAspect) { _, _ in updateVerticalScale(geo.size) }
                 #endif
             }
             #if os(watchOS)
@@ -108,6 +115,10 @@ struct GameView: View {
             .padding(.leading, 4)
         }
         #if !os(watchOS)
+        // A match against a watch is played on the watch's shape, so the phone
+        // letterboxes to it; phone-to-phone keeps the full-height field.
+        .aspectRatio(matchAspect, contentMode: .fit)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Inside the safe area so the top paddle clears the Dynamic Island
         // and the bottom one clears the home indicator.
         .background(Color.black.ignoresSafeArea())
@@ -176,6 +187,9 @@ struct GameView: View {
 
     #if !os(watchOS)
     private func updateVerticalScale(_ size: CGSize) {
+        // In a match the opponent's shape wins; MultiplayerGameState already
+        // set the scale to match, so don't fight it with this screen's own.
+        if matchAspect != nil { return }
         guard size.width > 0, size.height > 0 else { return }
         GameConstants.verticalScale = (size.width / size.height) / GameConstants.watchPlayfieldAspect
     }
@@ -190,13 +204,35 @@ struct GameView: View {
                    centerX: state.playerPaddleX,
                    centerY: 1.0 - GameConstants.paddleMarginY,
                    width: state.powerUps.paddleWidth(for: .bottom),
-                   color: bottomSticky ? .green : .white)
+                   color: bottomSticky ? .green : skins.paddleColor)
         // AI paddle (top)
         drawPaddle(context: context, size: size,
                    centerX: state.aiPaddleX,
                    centerY: GameConstants.paddleMarginY,
                    width: state.powerUps.paddleWidth(for: .top),
                    color: topSticky ? .green : .white)
+
+        // Serve preview: both players get to see which way the ball will go
+        // before it moves, instead of reacting after the fact.
+        if state.countdownRemaining != nil, let serve = state.pendingServe {
+            let speed = hypot(serve.dx, serve.dy)
+            if speed > 0 {
+                let ux = serve.dx / speed, uy = serve.dy / speed
+                let inset = GameConstants.servePreviewInset * size.height
+                let length = GameConstants.servePreviewLength * size.height
+                let centre = CGPoint(x: 0.5 * size.width, y: 0.5 * size.height)
+                let from = CGPoint(x: centre.x + ux * inset, y: centre.y + uy * inset)
+                let to = CGPoint(x: centre.x + ux * (inset + length),
+                                 y: centre.y + uy * (inset + length))
+                var path = Path()
+                path.move(to: from)
+                path.addLine(to: to)
+                context.stroke(path, with: .color(.white.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: max(1, size.width * 0.008),
+                                                  lineCap: .round,
+                                                  dash: [size.width * 0.02, size.width * 0.025]))
+            }
+        }
 
         if let count = state.countdownRemaining {
             // Countdown: hide ball, show big number in center.
@@ -214,7 +250,7 @@ struct GameView: View {
                 let ballRadiusPx = GameConstants.ballRadius * size.width
                 let ballRect = CGRect(x: ballPx.x - ballRadiusPx, y: ballPx.y - ballRadiusPx,
                                       width: ballRadiusPx * 2, height: ballRadiusPx * 2)
-                context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+                context.fill(Path(ellipseIn: ballRect), with: .color(skins.ballColor))
             }
         }
 

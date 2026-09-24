@@ -9,6 +9,9 @@ struct DiscoveredPeer: Identifiable, Equatable, Hashable {
     let id: String
     let displayName: String
     let endpoint: NWEndpoint
+    /// "watch" or "phone" from the peer's TXT record; nil until it resolves.
+    /// Shown in the lobby so a cross-platform match is visibly the right pair.
+    var platform: String? = nil
 
     static func == (lhs: DiscoveredPeer, rhs: DiscoveredPeer) -> Bool {
         lhs.id == rhs.id

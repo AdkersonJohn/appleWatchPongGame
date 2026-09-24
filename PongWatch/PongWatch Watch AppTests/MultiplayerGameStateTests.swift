@@ -202,6 +202,7 @@ final class MultiplayerGameStateTests: XCTestCase {
     func test_clientSpawnsParticlesWhenTheyAreTheScorer() async {
         let fake = FakeMultiplayerService()
         let game = GameState()
+        game.celebration = .sparks
         game.phase = .playing
         let state = MultiplayerGameState(service: fake, game: game)
         fake.simulateConnected(as: .client)

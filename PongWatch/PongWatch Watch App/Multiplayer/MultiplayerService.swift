@@ -57,6 +57,7 @@ struct PeerCache {
 @MainActor
 final class MultiplayerService: MultiplayerServiceProtocol {
     @Published private(set) var discoveredPeers: [DiscoveredPeer] = []
+    @Published private(set) var lastIssue: String? = nil
     @Published private(set) var connectionState: MPConnectionState = .idle
     @Published private(set) var role: PeerRole? = nil
 
@@ -80,6 +81,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     /// handler. Used to recognise ourselves before the TXT record resolves.
     private var myEndpointID: String?
     private var peerCache = PeerCache()
+    private var inviteTimeout: Task<Void, Never>?
     private var activeConnection: NWConnection?
     private var pendingIncoming: NWConnection?
     private var decoder = MessageFraming.Decoder()
@@ -97,6 +99,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         self.incomingMessages = AsyncStream { cont = $0 }
         self.messageContinuation = cont
 
+        MPDiag.shared.lastIssueSink = { [weak self] raw in
+            Task { @MainActor in self?.lastIssue = MPIssue.hint(raw) }
+        }
         MPDiag.shared.event("init name=\"\(self.displayName)\" id=\(instanceID.prefix(8)) type=\(bonjourType)")
     }
 
@@ -116,6 +121,10 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         var txtRecord = NWTXTRecord()
         txtRecord["name"] = displayName
         txtRecord["id"] = instanceID
+        // Tells the other side what it found, and catches a build mismatch —
+        // the likeliest reason a watch and a phone connect but never play.
+        txtRecord["plat"] = MPDiag.platformTag
+        txtRecord["proto"] = String(GameConstants.multiplayerProtocolVersion)
         do {
             let l = try NWListener(using: params)
             l.service = NWListener.Service(
@@ -131,9 +140,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
                 Task { @MainActor in
                     switch state {
                     case .setup:            MPDiag.shared.event("advertise: setup")
-                    case .ready:            MPDiag.shared.event("advertise: READY")
-                    case .waiting(let e):   MPDiag.shared.event("advertise: WAITING \(e)")
-                    case .failed(let e):    MPDiag.shared.event("advertise: FAILED \(e)")
+                    case .ready:
+                        MPDiag.shared.event("advertise: READY")
+                    case .waiting(let e):
+                        MPDiag.shared.event("advertise: WAITING \(e)")
+                        MPDiag.shared.lastIssueSink?("\(e)")
+                    case .failed(let e):
+                        MPDiag.shared.event("advertise: FAILED \(e)")
+                        MPDiag.shared.lastIssueSink?("\(e)")
                     case .cancelled:        MPDiag.shared.event("advertise: cancelled")
                     @unknown default:       MPDiag.shared.event("advertise: unknown state")
                     }
@@ -189,9 +203,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
             Task { @MainActor in
                 switch state {
                 case .setup:            MPDiag.shared.event("browse: setup")
-                case .ready:            MPDiag.shared.event("browse: READY")
-                case .waiting(let e):   MPDiag.shared.event("browse: WAITING \(e) — check local network permission")
-                case .failed(let e):    MPDiag.shared.event("browse: FAILED \(e)")
+                case .ready:
+                    MPDiag.shared.event("browse: READY")
+                case .waiting(let e):
+                    MPDiag.shared.event("browse: WAITING \(e) — check local network permission")
+                    MPDiag.shared.lastIssueSink?("\(e)")
+                case .failed(let e):
+                    MPDiag.shared.event("browse: FAILED \(e)")
+                    MPDiag.shared.lastIssueSink?("\(e)")
                 case .cancelled:        MPDiag.shared.event("browse: cancelled")
                 @unknown default:       MPDiag.shared.event("browse: unknown state")
                 }
@@ -217,9 +236,13 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         for result in results {
             var txtID: String? = nil
             var txtName: String? = nil
+            var txtPlat: String? = nil
+            var txtProto: String? = nil
             if case .bonjour(let txt) = result.metadata {
                 txtID = txt["id"]
                 txtName = txt["name"]
+                txtPlat = txt["plat"]
+                txtProto = txt["proto"]
             } else {
                 MPDiag.shared.event("  · no TXT record on \(result.endpoint)")
             }
@@ -235,13 +258,31 @@ final class MultiplayerService: MultiplayerServiceProtocol {
                 MPDiag.shared.event("  · self, hidden (\(name))")
                 continue
             }
-            MPDiag.shared.event("  · peer \"\(name)\" id=\(txtID?.prefix(8) ?? "none")")
-            fresh.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint))
+            let plat = txtPlat ?? "?"
+            MPDiag.shared.event("  · peer \"\(name)\" [\(plat)] id=\(txtID?.prefix(8) ?? "none") proto=\(txtProto ?? "?")")
+            if let txtProto, let theirs = UInt8(txtProto), !ProtoCheck.isCompatible(theirs) {
+                MPDiag.shared.event("  · MISMATCH proto \(theirs) vs ours \(GameConstants.multiplayerProtocolVersion) — update one device")
+            }
+            fresh.append(DiscoveredPeer(id: id, displayName: name, endpoint: result.endpoint, platform: txtPlat))
         }
         let shown = peerCache.merge(fresh, now: Date())
         let held = shown.count - fresh.count
         MPDiag.shared.event("browse: showing \(shown.count) peer(s)\(held > 0 ? " (\(held) held)" : "")")
+        if !shown.isEmpty { self.lastIssue = nil }
         self.discoveredPeers = shown
+    }
+
+    /// Which physical link the match is actually running over. On a
+    /// watch-to-phone test this is the difference between "same Wi-Fi" and
+    /// AWDL peer-to-peer, and it decides what to change when it fails.
+    private func logPath(_ connection: NWConnection, tag: String) {
+        guard let path = connection.currentPath else {
+            MPDiag.shared.event("\(tag): no path yet")
+            return
+        }
+        let ifaces = path.availableInterfaces.map { "\($0.type)" }.joined(separator: ",")
+        MPDiag.shared.event("\(tag): via [\(ifaces)] expensive=\(path.isExpensive) constrained=\(path.isConstrained)")
+        if let remote = path.remoteEndpoint { MPDiag.shared.event("\(tag): remote \(remote)") }
     }
 
     private func endpointID(_ endpoint: NWEndpoint) -> String {
@@ -264,7 +305,7 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Invite (outgoing)
 
     func invite(_ peer: DiscoveredPeer) {
-        MPDiag.shared.event("invite -> \(peer.displayName)")
+        MPDiag.shared.event("invite -> \(peer.displayName) [\(peer.platform ?? "?")] endpoint=\(peer.endpoint)")
         disconnectActive()
         self.role = .host
         self.connectionState = .inviting(peer)
@@ -277,9 +318,34 @@ final class MultiplayerService: MultiplayerServiceProtocol {
                 self?.handleOutgoingState(state, for: peer, connection: c)
             }
         }
+        c.viabilityUpdateHandler = { viable in
+            Task { @MainActor in MPDiag.shared.event("outgoing: viable=\(viable)") }
+        }
+        c.betterPathUpdateHandler = { better in
+            Task { @MainActor in MPDiag.shared.event("outgoing: betterPath=\(better)") }
+        }
         c.start(queue: queue)
         self.activeConnection = c
         receiveLoop(on: c)
+        startInviteTimeout(for: peer)
+    }
+
+    /// A peer-to-peer connection that never completes leaves NWConnection in
+    /// .preparing indefinitely, which on screen is a button that did nothing.
+    private func startInviteTimeout(for peer: DiscoveredPeer) {
+        inviteTimeout?.cancel()
+        inviteTimeout = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(GameConstants.inviteTimeoutSeconds * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run {
+                guard case .inviting = self.connectionState else { return }
+                MPDiag.shared.event("invite TIMED OUT after \(Int(GameConstants.inviteTimeoutSeconds))s — never reached .ready")
+                if let c = self.activeConnection { self.logPath(c, tag: "timeout") }
+                self.lastIssue = "\(peer.displayName) didn't answer. Both devices need Wi-Fi on and Multiplayer open."
+                self.disconnectActive()
+                self.connectionState = .discovering
+            }
+        }
     }
 
     private func handleOutgoingState(
@@ -290,8 +356,14 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         MPDiag.shared.event("outgoing: \(state) -> \(peer.displayName)")
         switch state {
         case .ready:
+            inviteTimeout?.cancel()
+            logPath(connection, tag: "outgoing")
+            MPDiag.shared.event("CONNECTED as host to \(peer.displayName) [\(peer.platform ?? "?")]")
             self.connectionState = .connected(peer: peer, role: .host)
         case .failed(let err):
+            inviteTimeout?.cancel()
+            MPDiag.shared.event("outgoing FAILED: \(err)")
+            self.lastIssue = MPIssue.hint("\(err)")
             self.connectionState = .failed(err.localizedDescription)
             self.role = nil
         case .cancelled:
@@ -311,12 +383,17 @@ final class MultiplayerService: MultiplayerServiceProtocol {
             return
         }
         let peerName = displayFallback(for: connection.endpoint)
+        MPDiag.shared.event("invite received from \(peerName)")
         self.pendingIncoming = connection
         self.connectionState = .receivingInvite(fromDisplayName: peerName)
     }
 
     func respondToInvite(accept: Bool) {
-        guard let connection = pendingIncoming else { return }
+        MPDiag.shared.event("invite \(accept ? "accepted" : "declined")")
+        guard let connection = pendingIncoming else {
+            MPDiag.shared.event("  · no pending connection to respond to")
+            return
+        }
         self.pendingIncoming = nil
         if accept {
             self.role = .client
@@ -338,7 +415,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
         MPDiag.shared.event("incoming: \(state)")
         switch state {
         case .ready:
+            logPath(connection, tag: "incoming")
             let peerName = displayFallback(for: connection.endpoint)
+            MPDiag.shared.event("CONNECTED as client to \(peerName)")
             let id = endpointID(connection.endpoint)
             let peer = DiscoveredPeer(id: id, displayName: peerName, endpoint: connection.endpoint)
             self.connectionState = .connected(peer: peer, role: .client)
@@ -361,12 +440,27 @@ final class MultiplayerService: MultiplayerServiceProtocol {
             Task { @MainActor in
                 guard let self else { return }
                 if let data, !data.isEmpty {
+                    let before = self.decoder.failureCount
                     let messages = self.decoder.feed(data)
+                    if self.decoder.failureCount > before {
+                        MPDiag.shared.event("rx UNDECODABLE payload (\(self.decoder.failureCount) total) — build mismatch?")
+                    }
                     for msg in messages {
+                        if Self.isHighRate(msg) {
+                            MPDiag.shared.tally("rx \(Self.kind(msg))")
+                        } else {
+                            MPDiag.shared.event("rx \(Self.kind(msg))")
+                        }
                         self.messageContinuation.yield(msg)
                     }
                 }
-                if error != nil || isComplete {
+                if let error {
+                    MPDiag.shared.event("rx FAILED \(error) — link dropped")
+                    self.disconnectActive()
+                    return
+                }
+                if isComplete {
+                    MPDiag.shared.event("rx stream closed by peer")
                     self.disconnectActive()
                     return
                 }
@@ -378,12 +472,50 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Send
 
     func send(_ message: NetworkMessage, reliable: Bool) {
-        guard let connection = activeConnection, isReady(connection) else { return }
+        guard let connection = activeConnection, isReady(connection) else {
+            MPDiag.shared.event("send \(Self.kind(message)) DROPPED — no ready connection")
+            return
+        }
         do {
             let framed = try MessageFraming.encode(message)
-            connection.send(content: framed, completion: .contentProcessed { _ in })
+            connection.send(content: framed, completion: .contentProcessed { error in
+                if let error {
+                    Task { @MainActor in MPDiag.shared.event("send FAILED \(Self.kind(message)): \(error)") }
+                }
+            })
+            // Snapshots and paddle input run at 30Hz; only the rare, meaningful
+            // messages get a line of their own.
+            if Self.isHighRate(message) {
+                MPDiag.shared.tally("tx \(Self.kind(message))")
+            } else {
+                MPDiag.shared.event("send \(Self.kind(message))")
+            }
         } catch {
-            // Encode failure is not recoverable for this message; drop silently.
+            MPDiag.shared.event("send ENCODE FAILED \(Self.kind(message)): \(error)")
+        }
+    }
+
+    static func kind(_ m: NetworkMessage) -> String {
+        switch m {
+        case .snapshot:      return "snapshot"
+        case .paddleInput:   return "paddleInput"
+        case .rematchRequest:return "rematchRequest"
+        case .endMatch:      return "endMatch"
+        case .paused:        return "paused"
+        case .resumed:       return "resumed"
+        case .forfeit:       return "forfeit"
+        case .startMatch:    return "startMatch"
+        case .clientReady:   return "clientReady"
+        case .stickyRelease: return "stickyRelease"
+        case .hello:         return "hello"
+        case .fieldShape:    return "fieldShape"
+        }
+    }
+
+    static func isHighRate(_ m: NetworkMessage) -> Bool {
+        switch m {
+        case .snapshot, .paddleInput: return true
+        default: return false
         }
     }
 
@@ -395,6 +527,9 @@ final class MultiplayerService: MultiplayerServiceProtocol {
     // MARK: - Disconnect
 
     func disconnect() {
+        MPDiag.shared.event("disconnect requested")
+        inviteTimeout?.cancel()
+        MPDiag.shared.flushTallies()
         disconnectActive()
         stopAdvertising()
         stopBrowsing()

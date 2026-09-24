@@ -45,8 +45,11 @@ final class GameSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded.impactX, 0.37, accuracy: 1e-9)
     }
 
-    func test_protocolVersionIsTwo() {
-        XCTAssertEqual(GameConstants.multiplayerProtocolVersion, 2)
+    /// Guards a deliberate bump: two devices on different protocol versions
+    /// connect and then sit there, so the version has to change whenever the
+    /// message set does. v3 added `.hello` and `.fieldShape`.
+    func test_protocolVersionMatchesTheCurrentMessageSet() {
+        XCTAssertEqual(GameConstants.multiplayerProtocolVersion, 3)
     }
 
     func test_snapshotWithPowerUpsRoundTripsThroughJSON() throws {

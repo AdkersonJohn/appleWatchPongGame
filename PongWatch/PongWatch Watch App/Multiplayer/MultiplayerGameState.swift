@@ -18,7 +18,27 @@ enum MultiplayerMatchPhase: Equatable {
 
 final class MultiplayerGameState: ObservableObject {
     // Public, observable state
-    @Published private(set) var matchPhase: MultiplayerMatchPhase = .pairing
+    /// Every transition is logged: on a two-device test the phase timeline is
+    /// what shows which side stalled, and where.
+    @Published private(set) var matchPhase: MultiplayerMatchPhase = .pairing {
+        didSet {
+            guard oldValue != matchPhase else { return }
+            let role = service.role.map { "\($0)" } ?? "none"
+            Task { @MainActor in
+                MPDiag.shared.event("phase \(oldValue) -> \(self.matchPhase) (role \(role))")
+            }
+            // Every route to a finished match runs through this one property,
+            // so points are banked here rather than at each of the six call
+            // sites that can end a match.
+            if case .matchOver(let winner) = matchPhase {
+                if case .matchOver = oldValue { return }
+                let mine = self.role == .client ? clientScore : hostScore
+                progression.award(PointsRules.award(scored: mine,
+                                                    won: winner == self.role,
+                                                    newHighScore: false))
+            }
+        }
+    }
     @Published private(set) var role: PeerRole? = nil
     @Published private(set) var hostScore: Int = 0
     @Published private(set) var clientScore: Int = 0
@@ -26,6 +46,7 @@ final class MultiplayerGameState: ObservableObject {
     @Published private(set) var game: GameState
 
     private let service: any MultiplayerServiceProtocol
+    private let progression: ProgressionStore
     private var cancellables: Set<AnyCancellable> = []
     private var incomingTask: Task<Void, Never>?
     private var tickSeq: UInt32 = 0
@@ -35,14 +56,22 @@ final class MultiplayerGameState: ObservableObject {
     private var lastPeerActivityAt: Date?
     private var peerSilenceTimeout: Double = GameConstants.peerSilenceTimeoutSeconds
 
+    /// Playfield width/height both sides play on, agreed at match start. nil
+    /// until then, which means "use this device's own screen".
+    @Published private(set) var fieldAspect: CGFloat? = nil
+    /// "watch" or "phone" as announced by the peer; nil until `.hello` lands.
+    private(set) var peerPlatform: String? = nil
+
     /// Score required to win, agreed on the configuration screen. nil means
     /// no win condition (match only ends on disconnect/leave/forfeit).
     private(set) var winningScore: Int? = nil
 
     init(service: any MultiplayerServiceProtocol,
-         game: GameState = GameState()) {
+         game: GameState = GameState(),
+         progression: ProgressionStore = ProgressionStore()) {
         self.service = service
         self.game = game
+        self.progression = progression
         observeService()
         startConsumingMessages()
     }
@@ -72,6 +101,9 @@ final class MultiplayerGameState: ObservableObject {
             if matchPhase == .pairing {
                 // Watchdog stays disarmed until the first real peer message.
                 lastPeerActivityAt = nil
+                // Both sides announce what they are; the host needs it to pick
+                // the field shape before the match starts.
+                service.send(.hello(platform: MPDiag.platformTag), reliable: true)
                 if newRole == .host {
                     // Host's TCP completed but the client may not have tapped
                     // Accept yet. Hold on the waiting view until .clientReady.
@@ -153,10 +185,24 @@ final class MultiplayerGameState: ObservableObject {
             if matchPhase == .waitingForOpponentAccept {
                 matchPhase = .configuringMatch
             }
+        case .hello(let platform):
+            peerPlatform = platform
+            MPDiag.shared.event("peer is a \(platform)")
+        case .fieldShape(let aspect):
+            applyFieldAspect(aspect)
         case .stickyRelease:
             guard service.role == .host else { return }
             game.tapRelease(side: .top)
         }
+    }
+
+    /// Both sides scale their physics to the agreed shape, or the ball lands
+    /// in different places on the two screens.
+    private func applyFieldAspect(_ aspect: CGFloat) {
+        fieldAspect = aspect
+        GameConstants.verticalScale = FieldShape.verticalScale(forAspect: aspect)
+        MPDiag.shared.event(String(format: "field shape %.3f (verticalScale %.3f)",
+                                   aspect, GameConstants.verticalScale))
     }
 
     /// Screen tap during MP play. Host releases locally; client asks the host.
@@ -172,6 +218,14 @@ final class MultiplayerGameState: ObservableObject {
     /// Stores the choice, broadcasts it to the client, and starts the match.
     func startMatch(winningScore target: Int?) {
         guard service.role == .host, matchPhase == .configuringMatch else { return }
+        // A watch on either side shrinks the field to the watch's shape, so
+        // both players see the same playfield rather than two different games.
+        let aspect = FieldShape.agreed(
+            hostIsWatch: MPDiag.platformTag == "watch",
+            clientIsWatch: peerPlatform == "watch",
+            hostAspect: GameConstants.verticalScale * GameConstants.watchPlayfieldAspect)
+        applyFieldAspect(aspect)
+        service.send(.fieldShape(aspect: aspect), reliable: true)
         winningScore = target
         service.send(.startMatch(winningScore: target), reliable: true)
         resetMatchProgress()
@@ -212,8 +266,20 @@ final class MultiplayerGameState: ObservableObject {
 
     private func applyIncomingSnapshot(_ snap: GameSnapshot) {
         guard service.role == .client else { return }
+        if !ProtoCheck.isCompatible(snap.protoVersion) {
+            // Logged once per snapshot would flood; the tally keeps it visible
+            // without burying everything else.
+            Task { @MainActor in MPDiag.shared.tally("rx snapshot PROTO MISMATCH v\(snap.protoVersion)") }
+            return
+        }
         let delta = snap.tickSeq &- lastReceivedTickSeq
-        if delta == 0 || delta > UInt32.max / 2 { return }
+        if delta == 0 || delta > UInt32.max / 2 {
+            Task { @MainActor in MPDiag.shared.tally("snapshot out-of-order") }
+            return
+        }
+        if delta > 1 {
+            Task { @MainActor in MPDiag.shared.tally("snapshot gap \(delta - 1) dropped") }
+        }
         lastReceivedTickSeq = snap.tickSeq
 
         game.balls = snap.balls.map {
@@ -244,13 +310,32 @@ final class MultiplayerGameState: ObservableObject {
         }
         game.score = snap.clientScore
         game.countdownRemaining = snap.countdownRemaining
+        // Y flips across the two screens; X is symmetric.
+        if let vx = snap.pendingServeVX, let vy = snap.pendingServeVY {
+            game.setPendingServeForRemote(CGVector(dx: vx, dy: -vy))
+        } else {
+            game.setPendingServeForRemote(nil)
+        }
         game.phase = snap.phase
 
         hostScore = snap.hostScore
         clientScore = snap.clientScore
 
+        // The client renders the host's physics, so every impact it should see
+        // arrives as a flag rather than happening locally.
         if snap.clientPaddleHit {
             game.playPaddleHitHaptic()
+            if let ball = game.balls.first {
+                game.spawnImpactSparks(at: ball.position, awayFrom: .bottom)
+            }
+        }
+        if snap.hostPaddleHit, let ball = game.balls.first {
+            game.spawnImpactSparks(at: ball.position, awayFrom: .top)
+        }
+        if let wall = snap.wallImpact {
+            // X is symmetric across the flip; Y is not.
+            game.spawnImpactSparks(at: CGPoint(x: wall.x, y: 1.0 - wall.y),
+                                   awayFrom: wall.onLeft ? .leftWall : .rightWall)
         }
 
         if snap.pickupCollected == .client {
@@ -341,6 +426,12 @@ final class MultiplayerGameState: ObservableObject {
             if let last = lastPeerActivityAt,
                Date().timeIntervalSince(last) > peerSilenceTimeout,
                let myRole = service.role {
+                let silent = Date().timeIntervalSince(last)
+                Task { @MainActor in
+                    MPDiag.shared.event(String(format: "WATCHDOG: peer silent %.1fs > %.1fs — ending match",
+                                               silent, self.peerSilenceTimeout))
+                    MPDiag.shared.flushTallies()
+                }
                 matchPhase = .matchOver(winner: myRole)
                 service.disconnect()
                 return
@@ -383,7 +474,10 @@ final class MultiplayerGameState: ObservableObject {
         broadcastSnapshot(
             scoreEvent: pendingScoreEvent,
             hostPaddleHit: hostPaddleHit,
-            clientPaddleHit: clientPaddleHit
+            clientPaddleHit: clientPaddleHit,
+            wallImpact: game.wallHitThisTick.map {
+                WallImpact(x: $0.x, y: $0.y, onLeft: game.wallHitWasLeft)
+            }
         )
 
         // Only the host spawns particles on its own score. The client will spawn
@@ -396,6 +490,12 @@ final class MultiplayerGameState: ObservableObject {
     private func finishMatch(winner: PeerRole) {
         matchPhase = .matchOver(winner: winner)
     }
+
+    #if DEBUG
+    /// Test-only: ends the match the way a real win does, through the same
+    /// property that banks the points.
+    func finishMatchForTests(winner: PeerRole) { finishMatch(winner: winner) }
+    #endif
 
     // MARK: - Scene-phase / wrist-down handling
 
@@ -439,7 +539,8 @@ final class MultiplayerGameState: ObservableObject {
     private func broadcastSnapshot(
         scoreEvent: ScoreEvent? = nil,
         hostPaddleHit: Bool = false,
-        clientPaddleHit: Bool = false
+        clientPaddleHit: Bool = false,
+        wallImpact: WallImpact? = nil
     ) {
         tickSeq &+= 1
         func effectsState(_ side: PaddleSide) -> EffectsState {
@@ -469,7 +570,10 @@ final class MultiplayerGameState: ObservableObject {
                                                            y: $0.position.y, driftSign: $0.driftSign) },
             pickupCollected: collectedRole,
             stuckSide: stuckSide,
-            tickSeq: tickSeq
+            tickSeq: tickSeq,
+            wallImpact: wallImpact,
+            pendingServeVX: game.pendingServe?.dx,
+            pendingServeVY: game.pendingServe?.dy
         )
         service.send(.snapshot(snap), reliable: false)
     }
