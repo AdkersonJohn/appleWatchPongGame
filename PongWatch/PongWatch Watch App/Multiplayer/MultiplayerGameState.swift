@@ -27,6 +27,16 @@ final class MultiplayerGameState: ObservableObject {
             Task { @MainActor in
                 MPDiag.shared.event("phase \(oldValue) -> \(self.matchPhase) (role \(role))")
             }
+            // Every route to a finished match runs through this one property,
+            // so points are banked here rather than at each of the six call
+            // sites that can end a match.
+            if case .matchOver(let winner) = matchPhase {
+                if case .matchOver = oldValue { return }
+                let mine = self.role == .client ? clientScore : hostScore
+                progression.award(PointsRules.award(scored: mine,
+                                                    won: winner == self.role,
+                                                    newHighScore: false))
+            }
         }
     }
     @Published private(set) var role: PeerRole? = nil
@@ -36,6 +46,7 @@ final class MultiplayerGameState: ObservableObject {
     @Published private(set) var game: GameState
 
     private let service: any MultiplayerServiceProtocol
+    private let progression: ProgressionStore
     private var cancellables: Set<AnyCancellable> = []
     private var incomingTask: Task<Void, Never>?
     private var tickSeq: UInt32 = 0
@@ -56,9 +67,11 @@ final class MultiplayerGameState: ObservableObject {
     private(set) var winningScore: Int? = nil
 
     init(service: any MultiplayerServiceProtocol,
-         game: GameState = GameState()) {
+         game: GameState = GameState(),
+         progression: ProgressionStore = ProgressionStore()) {
         self.service = service
         self.game = game
+        self.progression = progression
         observeService()
         startConsumingMessages()
     }
@@ -477,6 +490,12 @@ final class MultiplayerGameState: ObservableObject {
     private func finishMatch(winner: PeerRole) {
         matchPhase = .matchOver(winner: winner)
     }
+
+    #if DEBUG
+    /// Test-only: ends the match the way a real win does, through the same
+    /// property that banks the points.
+    func finishMatchForTests(winner: PeerRole) { finishMatch(winner: winner) }
+    #endif
 
     // MARK: - Scene-phase / wrist-down handling
 

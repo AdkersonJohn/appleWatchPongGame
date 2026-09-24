@@ -514,6 +514,7 @@ final class GameStateTests: XCTestCase {
 
     func test_spawnScoreBurstCreatesExpectedCountAtGivenX() {
         let state = GameState()
+        state.celebration = .sparks   // this test is about the default burst
         state.spawnScoreBurst(atX: 0.3)
 
         XCTAssertEqual(state.particles.count, GameConstants.particlesPerBurst)
@@ -525,6 +526,7 @@ final class GameStateTests: XCTestCase {
 
     func test_spawnScoreBurstVelocitiesHaveDownwardBiasAndVariedSpeeds() {
         let state = GameState()
+        state.celebration = .sparks
         state.spawnScoreBurst(atX: 0.5)
 
         for p in state.particles {
@@ -602,6 +604,7 @@ final class GameStateTests: XCTestCase {
 
     func test_scoringSpawnsBurstAtImpactX() {
         let state = GameState()
+        state.celebration = .sparks
         state.phase = .playing
         let impactX: CGFloat = 0.37
         state.ball = Ball(

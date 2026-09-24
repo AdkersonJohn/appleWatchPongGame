@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 
 enum GameConstants {
     // Paddle dimensions as fractions of screen size
@@ -79,6 +80,17 @@ enum GameConstants {
     /// Gap before the dashes start, so they clear the countdown digit drawn
     /// in the middle of the field rather than running through it.
     static let servePreviewInset: CGFloat = 0.10
+
+    // Unlockable skin colours, kept here so the catalog and the renderer can't
+    // drift apart.
+    static let goldPaddle = Color(red: 1.00, green: 0.78, blue: 0.20)
+    static let neonPaddle = Color(red: 0.30, green: 1.00, blue: 0.45)
+    static let emberBall = Color(red: 1.00, green: 0.50, blue: 0.15)
+    static let iceBall = Color(red: 0.55, green: 0.85, blue: 1.00)
+    /// How much wider the Long Paddle ability makes the player's paddle.
+    static let longPaddleFactor: CGFloat = 1.25
+    /// Lucky Drops shortens the wait between power-ups by this factor.
+    static let luckyDropsFactor: CGFloat = 0.6
 
     // Impact sparks — the small white flash where the ball meets a paddle or
     // wall. Deliberately fewer, smaller and shorter-lived than the scoring

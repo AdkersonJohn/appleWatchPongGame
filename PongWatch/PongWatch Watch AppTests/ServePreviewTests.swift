@@ -15,11 +15,13 @@ final class ServePreviewTests: XCTestCase {
     }
 
     /// The preview would be a lie if the ball then launched somewhere else.
+    /// Checked on the tick the ball launches: a further second of physics
+    /// could bounce it off a wall and change the velocity legitimately.
     func test_theBallLaunchesAlongExactlyThePreviewedDirection() {
         let state = GameState()
         state.startGame()
         let previewed = state.pendingServe!
-        for _ in 0..<(GameConstants.countdownStart + 1) { state.update(dt: 1.0) }
+        for _ in 0..<GameConstants.countdownStart { state.update(dt: 1.0) }
         XCTAssertNil(state.countdownRemaining, "countdown should have finished")
         XCTAssertEqual(state.ball.velocity.dx, previewed.dx, accuracy: 0.0001)
         XCTAssertEqual(state.ball.velocity.dy, previewed.dy, accuracy: 0.0001)
@@ -28,7 +30,7 @@ final class ServePreviewTests: XCTestCase {
     func test_previewClearsOnceTheBallIsMoving() {
         let state = GameState()
         state.startGame()
-        for _ in 0..<(GameConstants.countdownStart + 1) { state.update(dt: 1.0) }
+        for _ in 0..<GameConstants.countdownStart { state.update(dt: 1.0) }
         XCTAssertNil(state.pendingServe, "nothing to preview once it's in play")
     }
 

@@ -3,6 +3,7 @@ import SwiftUI
 enum GameMode {
     case singlePlayer
     case multiplayer
+    case unlocks
 }
 
 struct ContentView: View {
@@ -31,7 +32,8 @@ struct ContentView: View {
                     },
                     onStartMultiplayer: {
                         mode = .multiplayer
-                    }
+                    },
+                    onOpenUnlocks: { mode = .unlocks }
                 )
 
             case .singlePlayer:
@@ -39,7 +41,8 @@ struct ContentView: View {
                 case .start:
                     StartView(
                         onStartSinglePlayer: { singlePlayerState.startGame() },
-                        onStartMultiplayer: { mode = .multiplayer }
+                        onStartMultiplayer: { mode = .multiplayer },
+                        onOpenUnlocks: { mode = .unlocks }
                     )
                 case .playing:
                     GameView(state: singlePlayerState)
@@ -55,6 +58,9 @@ struct ContentView: View {
                         }
                     )
                 }
+
+            case .unlocks:
+                UnlocksView(onBack: { mode = nil })
 
             case .multiplayer:
                 multiplayerRoot

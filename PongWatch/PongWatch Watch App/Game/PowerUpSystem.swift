@@ -50,6 +50,11 @@ struct PowerUpSystem {
     private(set) var timeUntilNextSpawn: CGFloat = 0
     /// Single-player: every pickup drifts to the human (bottom) paddle.
     var alwaysDriftToBottom: Bool = false
+    /// Permanent widening from the Long Paddle ability, applied to the
+    /// player's paddle only. 1 = no ability.
+    var baseWidthFactor: CGFloat = 1
+    /// Lucky Drops shortens the spawn wait. 1 = no ability.
+    var spawnIntervalFactor: CGFloat = 1
     private var rng: SeededRandomNumberGenerator
 
     init(seed: UInt64 = UInt64.random(in: .min ... .max)) {
@@ -101,9 +106,8 @@ struct PowerUpSystem {
     func effects(for side: PaddleSide) -> SidePowerUps { side == .bottom ? bottom : top }
 
     func paddleWidth(for side: PaddleSide) -> CGFloat {
-        effects(for: side).isWide
-            ? GameConstants.paddleWidth * GameConstants.widePaddleFactor
-            : GameConstants.paddleWidth
+        let base = GameConstants.paddleWidth * (side == .bottom ? baseWidthFactor : 1)
+        return effects(for: side).isWide ? base * GameConstants.widePaddleFactor : base
     }
 
     func hasShield(for side: PaddleSide) -> Bool { effects(for: side).hasShield }
@@ -158,7 +162,7 @@ struct PowerUpSystem {
     private mutating func rearmSpawnTimer() {
         timeUntilNextSpawn = CGFloat.random(
             in: GameConstants.powerUpSpawnIntervalMin...GameConstants.powerUpSpawnIntervalMax,
-            using: &rng)
+            using: &rng) * spawnIntervalFactor
     }
 
     private mutating func spawnPickup() {

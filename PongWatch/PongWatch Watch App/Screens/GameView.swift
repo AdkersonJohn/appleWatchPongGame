@@ -50,6 +50,9 @@ struct GameView: View {
     /// Playfield width/height agreed with the opponent. nil in single player,
     /// where the device's own screen decides.
     var matchAspect: CGFloat? = nil
+    /// Equipped skins. Cosmetics apply in every mode, so this is read the same
+    /// way whether the opponent is the AI or a person.
+    private let skins = UnlockEffects()
     @Environment(\.scenePhase) private var scenePhase
     /// Bound because the modifier requires it; the event velocity is what drives
     /// the paddle, not this accumulated value.
@@ -201,7 +204,7 @@ struct GameView: View {
                    centerX: state.playerPaddleX,
                    centerY: 1.0 - GameConstants.paddleMarginY,
                    width: state.powerUps.paddleWidth(for: .bottom),
-                   color: bottomSticky ? .green : .white)
+                   color: bottomSticky ? .green : skins.paddleColor)
         // AI paddle (top)
         drawPaddle(context: context, size: size,
                    centerX: state.aiPaddleX,
@@ -247,7 +250,7 @@ struct GameView: View {
                 let ballRadiusPx = GameConstants.ballRadius * size.width
                 let ballRect = CGRect(x: ballPx.x - ballRadiusPx, y: ballPx.y - ballRadiusPx,
                                       width: ballRadiusPx * 2, height: ballRadiusPx * 2)
-                context.fill(Path(ellipseIn: ballRect), with: .color(.white))
+                context.fill(Path(ellipseIn: ballRect), with: .color(skins.ballColor))
             }
         }
 

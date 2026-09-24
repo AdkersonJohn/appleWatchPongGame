@@ -29,6 +29,10 @@ final class GameState: ObservableObject {
     /// both players can see the serve direction before it moves. nil while the
     /// ball is in play.
     @Published private(set) var pendingServe: CGVector?
+    /// How a scored point is celebrated. Cosmetic, so it applies in every mode.
+    /// Read from the injected store so a game built with a fresh store behaves
+    /// the same everywhere, rather than inheriting whatever this device owns.
+    var celebration: CelebrationStyle
     @Published var particles: [Particle] = []
     @Published private(set) var powerUps = PowerUpSystem()
     @Published private(set) var stuckBall: StuckBall?
@@ -57,11 +61,15 @@ final class GameState: ObservableObject {
     private var hitCount: Int = 0
     private let highScoreStore: HighScoreStore
     private let hapticPlayer: HapticPlayer
+    private let progression: ProgressionStore
 
     init(highScoreStore: HighScoreStore = HighScoreStore(),
-         hapticPlayer: HapticPlayer = WatchHapticPlayer()) {
+         hapticPlayer: HapticPlayer = WatchHapticPlayer(),
+         progression: ProgressionStore = ProgressionStore()) {
         self.highScoreStore = highScoreStore
         self.hapticPlayer = hapticPlayer
+        self.progression = progression
+        self.celebration = UnlockEffects(store: progression).celebration
         self.balls = [Ball(position: CGPoint(x: 0.5, y: 0.5), velocity: .zero)]
         self.playerPaddleX = 0.5
         self.aiPaddleX = 0.5
@@ -88,8 +96,20 @@ final class GameState: ObservableObject {
 
     func startGame() {
         reset()
+        applyEquippedAbilities()
         phase = .playing
         startCountdown()
+    }
+
+    /// Abilities are single-player only: `topSideIsAI` is false exactly when
+    /// the other paddle is a person, and nobody should lose to someone else's
+    /// unlocks rather than their own play.
+    private func applyEquippedAbilities() {
+        guard topSideIsAI else { return }
+        let abilities = UnlockEffects(store: progression).abilities
+        if abilities.contains(.shieldStart) { powerUps.grant(.shield, to: .bottom) }
+        powerUps.baseWidthFactor = abilities.contains(.widePaddle) ? GameConstants.longPaddleFactor : 1
+        powerUps.spawnIntervalFactor = abilities.contains(.luckyDrops) ? GameConstants.luckyDropsFactor : 1
     }
 
     /// Public entry point used by multiplayer to start a fresh serve.
@@ -265,6 +285,11 @@ final class GameState: ObservableObject {
                 } else {
                     lastRunWasRecord = highScoreStore.updateIfHigher(newScore: score)
                     phase = .gameOver
+                    // Banked once, here, because this is the only place a
+                    // single-player game ends.
+                    progression.award(PointsRules.award(scored: score,
+                                                        won: false,
+                                                        newHighScore: lastRunWasRecord))
                     return
                 }
             }
@@ -396,27 +421,34 @@ final class GameState: ObservableObject {
 
     func spawnScoreBurst(atX x: CGFloat) {
         let origin = CGPoint(x: x, y: 0.0)
+        let spec = CelebrationSpec.for(celebration)
         var newParticles: [Particle] = []
-        newParticles.reserveCapacity(GameConstants.particlesPerBurst)
+        newParticles.reserveCapacity(spec.count)
 
-        for _ in 0..<GameConstants.particlesPerBurst {
-            // Direction: dx in [-1, 1], dy in [0.1, 1] — biases burst into the playfield.
-            let rawDx = CGFloat.random(in: -1...1)
-            let rawDy = CGFloat.random(in: 0.1...1.0)
-            let mag = hypot(rawDx, rawDy)
-            let ux = rawDx / mag
-            let uy = rawDy / mag
+        for i in 0..<spec.count {
+            let ux: CGFloat, uy: CGFloat
+            if spec.isRing {
+                // Evenly spaced so it reads as an expanding ring, not a spray.
+                let angle = (CGFloat(i) / CGFloat(spec.count)) * 2 * .pi
+                ux = cos(angle); uy = abs(sin(angle))
+            } else {
+                // dx in [-1, 1], dy in [0.1, 1] — biases the burst into the playfield.
+                let rawDx = CGFloat.random(in: -1...1)
+                let rawDy = CGFloat.random(in: 0.1...1.0)
+                let mag = hypot(rawDx, rawDy)
+                ux = rawDx / mag; uy = rawDy / mag
+            }
 
-            let speed = CGFloat.random(in: GameConstants.particleMinSpeed...GameConstants.particleMaxSpeed)
-            let lifespan = CGFloat.random(in: GameConstants.particleMinLifespan...GameConstants.particleMaxLifespan)
-            let color = GameConstants.particlePalette.randomElement()!
+            let speed = spec.isRing ? spec.maxSpeed : CGFloat.random(in: spec.minSpeed...spec.maxSpeed)
+            let lifespan = CGFloat.random(in: spec.minLifespan...spec.maxLifespan)
+            let color = spec.palette.randomElement()!
 
             newParticles.append(Particle(
                 position: origin,
                 velocity: CGVector(dx: ux * speed, dy: uy * speed),
                 ageRemaining: lifespan,
                 totalAge: lifespan,
-                radius: GameConstants.ballRadius * GameConstants.particleRadiusFactor,
+                radius: GameConstants.ballRadius * spec.radiusFactor,
                 red: color.0,
                 green: color.1,
                 blue: color.2
