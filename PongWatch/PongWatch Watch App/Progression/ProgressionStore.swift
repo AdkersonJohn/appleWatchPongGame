@@ -66,6 +66,14 @@ final class ProgressionStore {
         UnlockCatalog.all.filter { $0.category == category }.count
     }
 
+    /// Items in a category you could buy right now. Drives the "ready" flag on
+    /// a collapsed header, so the player knows which section to open.
+    func affordableCount(in category: UnlockCategory) -> Int {
+        UnlockCatalog.all.filter {
+            $0.category == category && !isUnlocked($0) && $0.cost <= availablePoints
+        }.count
+    }
+
     // MARK: - Equipped
 
     private var equippedByCategory: [String: String] {

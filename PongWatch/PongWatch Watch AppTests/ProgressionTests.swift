@@ -298,3 +298,43 @@ final class CategoryProgressTests: XCTestCase {
         XCTAssertEqual(store.totalCount(in: .ballSkin), 10)
     }
 }
+
+final class AffordabilityTests: XCTestCase {
+    private var store: ProgressionStore!
+
+    override func setUp() {
+        super.setUp()
+        store = ProgressionStore(defaults: UserDefaults(suiteName: "afford.\(UUID().uuidString)")!)
+    }
+
+    /// With no points nothing is ready, so no category should be flagged and
+    /// the player isn't sent hunting through five collapsed sections.
+    func test_nothingIsReadyWithoutPoints() {
+        for category in UnlockCategory.allCases {
+            XCTAssertEqual(store.affordableCount(in: category), 0)
+        }
+    }
+
+    func test_itemsBecomeReadyOnceTheyAreAffordable() {
+        let cheapest = UnlockCatalog.all.filter { $0.category == .paddleSkin && $0.cost > 0 }
+            .min { $0.cost < $1.cost }!
+        store.award(cheapest.cost)
+        XCTAssertEqual(store.affordableCount(in: .paddleSkin), 1)
+    }
+
+    /// Something already owned isn't "ready" — flagging it would send the
+    /// player to a section with nothing to buy.
+    func test_ownedItemsAreNotCountedAsReady() {
+        let item = UnlockCatalog.all.filter { $0.category == .title && $0.cost > 0 }
+            .min { $0.cost < $1.cost }!
+        store.award(item.cost)
+        _ = store.buy(item)
+        XCTAssertEqual(store.affordableCount(in: .title), 0)
+    }
+
+    func test_richPlayerSeesEveryRemainingItemAsReady() {
+        store.award(10_000)
+        let buyable = UnlockCatalog.all.filter { $0.category == .ballSkin && $0.cost > 0 }.count
+        XCTAssertEqual(store.affordableCount(in: .ballSkin), buyable)
+    }
+}

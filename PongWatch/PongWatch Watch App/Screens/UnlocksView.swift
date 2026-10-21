@@ -45,6 +45,7 @@ struct UnlocksView: View {
     @ViewBuilder
     private func section(for category: UnlockCategory) -> some View {
         let isOpen = expanded.contains(category)
+        let ready = store.affordableCount(in: category)
 
         VStack(spacing: 4) {
             Button {
@@ -60,7 +61,24 @@ struct UnlocksView: View {
                     Text(category.label)
                         .font(.caption).bold()
                         .foregroundColor(.white)
-                    Spacer()
+                        // Shrink rather than wrap: the ready badge squeezed
+                        // "Paddles" onto two lines on a 40mm screen.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Spacer(minLength: 4)
+                    // Closed sections have to advertise what's buyable inside,
+                    // or affording something means opening all five to find it.
+                    if ready > 0 {
+                        Text("\(ready) ready")
+                            .font(.system(size: 10, weight: .bold))
+                            .lineLimit(1)
+                            .fixedSize()
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.yellow)
+                            .cornerRadius(4)
+                    }
                     Text("\(store.ownedCount(in: category))/\(store.totalCount(in: category))")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
@@ -68,8 +86,12 @@ struct UnlocksView: View {
                 .padding(.vertical, 6)
                 .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity)
-                .background(Color.white.opacity(0.10))
+                .background(Color.white.opacity(ready > 0 ? 0.16 : 0.10))
                 .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.yellow.opacity(ready > 0 ? 0.8 : 0), lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
             .animation(.easeInOut(duration: 0.15), value: isOpen)
@@ -111,15 +133,32 @@ struct UnlocksView: View {
                 Spacer()
                 if equipped {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                } else if !owned && !affordable {
+                } else if owned {
+                    EmptyView()
+                } else if affordable {
+                    // Say what the tap will do, rather than leaving the player
+                    // to compare the price against the balance themselves.
+                    Text("Buy")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow)
+                        .cornerRadius(4)
+                } else {
                     Image(systemName: "lock.fill").foregroundColor(.white.opacity(0.35))
                 }
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
-            .background(equipped ? Color.green.opacity(0.18) : Color.white.opacity(0.12))
+            .background(equipped ? Color.green.opacity(0.18)
+                                 : Color.white.opacity(!owned && affordable ? 0.18 : 0.12))
             .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.yellow.opacity(!owned && affordable ? 0.75 : 0), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
         .disabled(!owned && !affordable)

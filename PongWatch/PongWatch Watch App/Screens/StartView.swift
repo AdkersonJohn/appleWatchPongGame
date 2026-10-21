@@ -11,7 +11,11 @@ struct StartView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VStack(spacing: 10) {
+            // Scrollable: the title, score line and three buttons are taller
+            // than a 40mm screen, which left Multiplayer cut off and
+            // unreachable.
+            ScrollView {
+                VStack(spacing: 10) {
                 Text("PONG")
                     .font(.largeTitle)
                     .bold()
@@ -60,8 +64,10 @@ struct StartView: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 12)
         }
         .onAppear { points = ProgressionStore().availablePoints }
     }
