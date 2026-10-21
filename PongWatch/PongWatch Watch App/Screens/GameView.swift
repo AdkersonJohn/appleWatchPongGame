@@ -127,10 +127,11 @@ struct GameView: View {
         // A match against a watch is played on the watch's shape, so the phone
         // letterboxes to it; phone-to-phone keeps the full-height field.
         .modifier(FieldAspect(aspect: matchAspect))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // Lift the field clear of where the thumb rests, so the paddle sits
-        // above the thumb instead of under it.
+        // above the thumb instead of under it. Centred in what's left, so a
+        // letterboxed watch-shaped match doesn't hang off the top of the screen.
         .padding(.bottom, GameConstants.thumbRoom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Inside the safe area so the top paddle clears the Dynamic Island
         // and the bottom one clears the home indicator.
         .background(Color.black.ignoresSafeArea())
