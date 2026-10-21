@@ -45,6 +45,21 @@ struct CrownHaptics {
     }
 }
 
+/// Letterboxes the field to an agreed shape. `aspectRatio(nil,)` would fit the
+/// content's own ideal ratio, which left the phone's field floating in the
+/// middle of the screen; no agreed shape means fill what you are given.
+private struct FieldAspect: ViewModifier {
+    let aspect: CGFloat?
+
+    func body(content: Content) -> some View {
+        if let aspect {
+            content.aspectRatio(aspect, contentMode: .fit)
+        } else {
+            content
+        }
+    }
+}
+
 struct GameView: View {
     @ObservedObject var state: GameState
     /// Playfield width/height agreed with the opponent. nil in single player,
@@ -78,12 +93,6 @@ struct GameView: View {
                 }
                 .background(Color.black)
                 #if !os(watchOS)
-                // No crown on iPhone: the paddle follows the finger. Simultaneous
-                // so a tap still reaches onTapGesture to release a stuck ball.
-                .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { drag in
-                    let x = min(1, max(0, drag.location.x / max(1, geo.size.width)))
-                    if let onCrownChange { onCrownChange(x) } else { state.setPlayerPaddle(normalizedCrown: x) }
-                })
                 // The field fills the phone's full height; shrink height-based
                 // sizes so paddles and hitboxes match the watch's proportions.
                 .onAppear { updateVerticalScale(geo.size) }
@@ -117,11 +126,27 @@ struct GameView: View {
         #if !os(watchOS)
         // A match against a watch is played on the watch's shape, so the phone
         // letterboxes to it; phone-to-phone keeps the full-height field.
-        .aspectRatio(matchAspect, contentMode: .fit)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(FieldAspect(aspect: matchAspect))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Lift the field clear of where the thumb rests, so the paddle sits
+        // above the thumb instead of under it.
+        .padding(.bottom, GameConstants.thumbRoom)
         // Inside the safe area so the top paddle clears the Dynamic Island
         // and the bottom one clears the home indicator.
         .background(Color.black.ignoresSafeArea())
+        // No crown on iPhone: the paddle follows the finger, and it reads the
+        // drag out here so the thumb strip below the field steers too.
+        // Simultaneous so a tap still reaches onTapGesture to release a ball.
+        .overlay(
+            GeometryReader { geo in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                        let x = min(1, max(0, drag.location.x / max(1, geo.size.width)))
+                        if let onCrownChange { onCrownChange(x) } else { state.setPlayerPaddle(normalizedCrown: x) }
+                    })
+            }
+        )
         .statusBarHidden()
         #endif
         .onTapGesture {

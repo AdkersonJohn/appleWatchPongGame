@@ -28,6 +28,12 @@ enum GameConstants {
     // Vertical placement of paddles (as fraction from top/bottom)
     static let paddleMarginY: CGFloat = 0.05
 
+    /// Points of empty screen left below the playfield on a phone, so a thumb
+    /// steering the paddle sits beside the screen edge instead of on top of
+    /// the paddle. A little wider than a thumb tip. Unused on the watch, where
+    /// the crown drives the paddle and nothing covers the screen.
+    static let thumbRoom: CGFloat = 72
+
     // Ball
     static let ballRadius: CGFloat = 0.02  // fraction of screen width
     /// The ball radius expressed as a fraction of field height, for vertical hit tests.
