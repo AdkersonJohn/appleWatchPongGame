@@ -2,14 +2,12 @@ import Foundation
 
 /// Points earned, things unlocked, and what's currently equipped.
 ///
-/// UserDefaults-backed like HighScoreStore: this is a handful of ids and two
-/// integers, and it has to survive a relaunch — losing it would erase the only
+/// UserDefaults-backed like HighScoreStore: the points ledger is a few small
+/// dictionaries, and it has to survive a relaunch — losing it would erase the only
 /// reason to keep playing.
 final class ProgressionStore {
     private enum Key {
-        static let available = "progress.availablePoints"
-        static let lifetime = "progress.lifetimePoints"
-        static let unlocked = "progress.unlocked"
+        static let ledger = "progress.ledger"
         static let equipped = "progress.equipped"
     }
 
@@ -21,39 +19,51 @@ final class ProgressionStore {
 
     // MARK: - Points
 
-    private(set) var availablePoints: Int {
-        get { defaults.integer(forKey: Key.available) }
-        set { defaults.set(newValue, forKey: Key.available) }
+    /// The balance is derived from this, never stored on its own.
+    private var ledger: PointsLedger {
+        get {
+            defaults.data(forKey: Key.ledger)
+                .flatMap { try? JSONDecoder().decode(PointsLedger.self, from: $0) } ?? PointsLedger()
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.ledger) }
     }
 
-    /// Everything ever earned. A record for titles and bragging, never spent.
-    private(set) var lifetimePoints: Int {
-        get { defaults.integer(forKey: Key.lifetime) }
-        set { defaults.set(newValue, forKey: Key.lifetime) }
-    }
+    var availablePoints: Int { ledger.balance }
+
+    /// Everything ever earned by playing. A record for titles and bragging,
+    /// never spent, and never inflated by purchased points.
+    var lifetimePoints: Int { ledger.lifetimeEarned }
 
     func award(_ points: Int) {
         guard points > 0 else { return }
-        availablePoints += points
-        lifetimePoints += points
+        ledger.earned[PointsLedger.deviceKind, default: 0] += points
+    }
+
+    /// Credits bought points once per StoreKit transaction. False, changing
+    /// nothing, when that transaction was already credited.
+    @discardableResult
+    func recordPurchase(points: Int, transactionID: String) -> Bool {
+        var l = ledger
+        guard points > 0, l.creditedTransactions.insert(transactionID).inserted else { return false }
+        l.purchased[PointsLedger.deviceKind, default: 0] += points
+        ledger = l
+        return true
     }
 
     // MARK: - Unlocks
 
-    private var unlockedIDs: Set<String> {
-        get { Set(defaults.stringArray(forKey: Key.unlocked) ?? []).union(UnlockCatalog.freeIDs) }
-        set { defaults.set(Array(newValue), forKey: Key.unlocked) }
+    func isUnlocked(_ item: Unlockable) -> Bool {
+        ledger.owned[item.id] != nil || UnlockCatalog.freeIDs.contains(item.id)
     }
-
-    func isUnlocked(_ item: Unlockable) -> Bool { unlockedIDs.contains(item.id) }
 
     /// Returns false when it's already owned or unaffordable, charging nothing
     /// either way.
     @discardableResult
     func buy(_ item: Unlockable) -> Bool {
-        guard !isUnlocked(item), availablePoints >= item.cost else { return false }
-        availablePoints -= item.cost
-        unlockedIDs.insert(item.id)
+        var l = ledger
+        guard !isUnlocked(item), l.balance >= item.cost else { return false }
+        l.owned[item.id] = OwnedItem(costPaid: item.cost, boughtAt: Date())
+        ledger = l
         return true
     }
 
