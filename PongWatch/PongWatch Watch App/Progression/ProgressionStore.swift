@@ -134,8 +134,9 @@ final class ProgressionStore {
         var relocked: [Unlockable] = []
         let newestFirst = l.owned.filter { $0.value.costPaid > 0 }
             .sorted { ($0.value.boughtAt, $0.key) > ($1.value.boughtAt, $1.key) }
-        for (id, _) in newestFirst where l.balance < 0 {
+        for (id, owned) in newestFirst where l.balance < 0 {
             l.owned[id] = nil
+            l.relocked.insert(Tombstone(itemID: id, boughtAt: owned.boughtAt))
             if let item = UnlockCatalog.item(id: id) { relocked.append(item) }
         }
         ledger = l

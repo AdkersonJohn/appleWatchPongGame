@@ -183,6 +183,60 @@ final class PurchaseTests: XCTestCase {
         XCTAssertEqual(cloud.saved.count, before + 1)
         XCTAssertEqual(cloud.saved.last?.balance, 0)
     }
+
+    // MARK: - Re-locks survive sync
+
+    private func ledger(owning id: String, boughtAt: Date, cost: Int = 40) -> PointsLedger {
+        var l = PointsLedger()
+        l.earned["watch"] = 1000
+        l.owned[id] = OwnedItem(costPaid: cost, boughtAt: boughtAt)
+        return l
+    }
+
+    func test_aRelockedItemDoesNotComeBackWhenAStaleDeviceMergesIn() {
+        let t = Date(timeIntervalSince1970: 1000)
+        let stale = ledger(owning: "celebration.explosion", boughtAt: t)
+        var refunded = stale
+        refunded.owned = [:]
+        refunded.refunded["watch"] = 40
+        refunded.relocked = [Tombstone(itemID: "celebration.explosion", boughtAt: t)]
+
+        let merged = PointsLedger.merge(refunded, stale)
+
+        XCTAssertNil(merged.owned["celebration.explosion"])
+        XCTAssertGreaterThanOrEqual(merged.balance, 0)
+    }
+
+    func test_anItemReboughtAfterBeingRelockedSurvivesAMergeWithTheTombstone() {
+        let old = Date(timeIntervalSince1970: 1000), new = Date(timeIntervalSince1970: 2000)
+        var a = ledger(owning: "celebration.explosion", boughtAt: new)
+        a.relocked = [Tombstone(itemID: "celebration.explosion", boughtAt: old)]
+        let stale = ledger(owning: "celebration.explosion", boughtAt: old)
+
+        for merged in [PointsLedger.merge(a, stale), PointsLedger.merge(stale, a)] {
+            XCTAssertEqual(merged.owned["celebration.explosion"]?.boughtAt, new)
+        }
+    }
+
+    func test_tombstoneMergingIsOrderIndependent() {
+        let t = Date(timeIntervalSince1970: 1000)
+        var a = ledger(owning: "paddle.sky", boughtAt: t, cost: 30)
+        a.relocked = [Tombstone(itemID: "paddle.sky", boughtAt: t)]
+        var b = ledger(owning: "celebration.explosion", boughtAt: t)
+        b.relocked = [Tombstone(itemID: "celebration.rainbow", boughtAt: t)]
+        XCTAssertEqual(PointsLedger.merge(a, b), PointsLedger.merge(b, a))
+        XCTAssertEqual(PointsLedger.merge(a, b).relocked.count, 2)
+    }
+
+    func test_aRevokeRecordsATombstoneForEachItemItRelocks() {
+        let s = makeStore()
+        s.recordPurchase(points: 40, transactionID: "tx-1")
+        XCTAssertTrue(s.buy(item("celebration.explosion")))
+        let cloud = RecordingCloud()
+        let s2 = ProgressionStore(defaults: defaults, cloud: cloud)
+        s2.revoke(points: 40, transactionID: "tx-1")
+        XCTAssertEqual(cloud.saved.last?.relocked.map(\.itemID), ["celebration.explosion"])
+    }
 }
 
 private final class RecordingCloud: LedgerCloudStore {
