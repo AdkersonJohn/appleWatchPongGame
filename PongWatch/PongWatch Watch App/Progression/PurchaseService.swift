@@ -7,11 +7,25 @@ enum PurchaseError: Error {
     case productUnavailable
 }
 
+/// What a purchase attempt came to, so the screen never reports a credited
+/// purchase as a cancellation (the launch listener can win the race).
+enum PurchaseOutcome: Equatable {
+    case credited(points: Int)
+    case cancelled
+    case pending
+    /// Another path (the launch listener) already credited it, or it isn't ours.
+    case alreadyCredited
+}
+
 /// Sells point packs through StoreKit 2 and credits them to the wallet.
 @MainActor
 final class PurchaseService: ObservableObject {
     @Published private(set) var packs: [(pack: PointPack, product: Product)] = []
     @Published private(set) var isPurchasing = false
+    /// Items a refund re-locked, until the player has been told.
+    @Published private(set) var relocked: [Unlockable] = []
+    /// Bumped whenever the wallet changes here, so open screens can redraw.
+    @Published private(set) var walletChanges = 0
 
     private let store: ProgressionStore
     private var updatesTask: Task<Void, Never>?
@@ -29,9 +43,13 @@ final class PurchaseService: ObservableObject {
         }
     }
 
-    /// True when points were credited; false when the player cancelled or the
-    /// purchase is pending approval (it arrives later through the updates listener).
-    func purchase(_ pack: PointPack, quantity: Int = 1) async throws -> Bool {
+    /// Apple limits one transaction to 10 units.
+    static let maxQuantity = 10
+
+    func dismissRelocked() { relocked = [] }
+
+    /// A pending purchase arrives later through the updates listener.
+    func purchase(_ pack: PointPack, quantity: Int = 1) async throws -> PurchaseOutcome {
         guard let product = packs.first(where: { $0.pack == pack })?.product else {
             throw PurchaseError.productUnavailable
         }
@@ -41,10 +59,12 @@ final class PurchaseService: ObservableObject {
         switch try await product.purchase(options: options) {
         case .success(let verification):
             return try await credit(verification)
-        case .userCancelled, .pending:
-            return false
+        case .userCancelled:
+            return .cancelled
+        case .pending:
+            return .pending
         @unknown default:
-            return false
+            return .cancelled
         }
     }
 
@@ -66,20 +86,22 @@ final class PurchaseService: ObservableObject {
 
     /// The one crediting path. Credit first, finish second: if the app dies in
     /// between, StoreKit replays the transaction and the id check stops a double credit.
-    private func credit(_ verification: VerificationResult<Transaction>) async throws -> Bool {
+    @discardableResult
+    private func credit(_ verification: VerificationResult<Transaction>) async throws -> PurchaseOutcome {
         guard case .verified(let transaction) = verification else { throw PurchaseError.unverified }
         guard let points = PointPack.pointsToCredit(productID: transaction.productID,
                                                     quantity: transaction.purchasedQuantity,
-                                                    isRevoked: false) else { return false }
+                                                    isRevoked: false) else { return .alreadyCredited }
         let id = String(transaction.id)
         var credited = false
         if transaction.revocationDate == nil {
             credited = store.recordPurchase(points: points, transactionID: id)
         } else {
             // A refund reverses the whole purchase, even points already spent.
-            store.revoke(points: points, transactionID: id)
+            relocked += store.revoke(points: points, transactionID: id)
         }
+        walletChanges += 1
         await transaction.finish()
-        return credited
+        return credited ? .credited(points: points) : .alreadyCredited
     }
 }
