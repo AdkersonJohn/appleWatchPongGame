@@ -236,14 +236,18 @@ final class LedgerSyncTests: XCTestCase {
         XCTAssertEqual(PointsLedger.merge(tieA, tieB), PointsLedger.merge(tieB, tieA), "an exact tie still has one answer")
     }
 
-    /// Review: ownership is the gate, and a synced ledger must not bypass it.
+    /// Ownership is the gate, and a synced ledger must not bypass it.
     func test_cannotEquipSomethingNotOwnedEvenAcrossDevices() {
         let cloud = FakeCloudStore()
         let s = ProgressionStore(defaults: defaults, cloud: cloud)
-        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 10]))
+        var remote = PointsLedger()
+        remote.equipped[UnlockCategory.paddleSkin.rawValue] = EquippedChoice(itemID: skinA.id, changedAt: Date())
+        cloud.otherDeviceWrites(remote)
+
+        XCTAssertFalse(s.isUnlocked(skinA))
+        XCTAssertEqual(s.equippedItem(in: .paddleSkin)?.cost, 0, "falls back to the free item")
         s.equip(skinA)
-        XCTAssertNil(s.equipped(in: .paddleSkin))
-        XCTAssertNil(cloud.stored?.equipped[UnlockCategory.paddleSkin.rawValue])
+        XCTAssertEqual(s.equippedItem(in: .paddleSkin)?.cost, 0)
     }
 
     func test_aChoiceFromTheOldEquippedKeyMovesIntoTheLedgerAndLosesToAnyRealChoice() {

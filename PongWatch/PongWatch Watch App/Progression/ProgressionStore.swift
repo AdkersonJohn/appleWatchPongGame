@@ -170,7 +170,8 @@ final class ProgressionStore {
     /// What's equipped in a category, falling back to that category's free item
     /// so callers never have to deal with an empty slot.
     func equippedItem(in category: UnlockCategory) -> Unlockable? {
-        if let id = equipped(in: category), let item = UnlockCatalog.item(id: id) { return item }
+        // Owned-ness is checked on read: a synced, migrated or refunded choice can name an item this device doesn't own.
+        if let id = equipped(in: category), let item = UnlockCatalog.item(id: id), isUnlocked(item) { return item }
         return UnlockCatalog.all.first { $0.category == category && $0.cost == 0 }
     }
 }
