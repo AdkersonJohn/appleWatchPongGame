@@ -216,6 +216,92 @@ final class LedgerSyncTests: XCTestCase {
         XCTAssertEqual(s.availablePoints, 200 - cheap.cost)
     }
 
+    // MARK: - Apple ID switch
+
+    private func store(token: NSObject?, cloud: LedgerCloudStore) -> ProgressionStore {
+        ProgressionStore(defaults: defaults, cloud: cloud, accountToken: { token })
+    }
+
+    private var asideKeys: [String] {
+        defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("progress.ledger.account.") }
+    }
+
+    func test_aDifferentAppleIDDoesNotMergeOrPushAndTheOldWalletIsKeptAside() {
+        let cloud = FakeCloudStore()
+        let a = store(token: "account-A" as NSString, cloud: cloud)
+        a.award(77)
+        a.buy(cheap)
+
+        let theirs = FakeCloudStore()
+        theirs.stored = ledger(earned: ["phone-elsewhere": 340])
+        let b = store(token: "account-B" as NSString, cloud: theirs)
+
+        XCTAssertEqual(b.availablePoints, 340, "only the new account's wallet")
+        XCTAssertFalse(b.isUnlocked(cheap))
+        XCTAssertEqual(theirs.stored?.earned, ["phone-elsewhere": 340], "nothing of A's was pushed")
+        XCTAssertTrue(theirs.saves.isEmpty)
+        XCTAssertEqual(asideKeys.count, 1, "A's wallet survives under its own key")
+        let aside = try? JSONDecoder().decode(PointsLedger.self, from: defaults.data(forKey: asideKeys[0])!)
+        XCTAssertEqual(aside?.earned[PointsLedger.deviceKind], 77)
+        XCTAssertNotNil(aside?.owned[cheap.id])
+    }
+
+    func test_switchingBackRestoresTheFirstAccountsWallet() {
+        let a = store(token: "account-A" as NSString, cloud: FakeCloudStore())
+        a.award(77)
+        a.buy(cheap)
+        _ = store(token: "account-B" as NSString, cloud: FakeCloudStore())
+
+        let back = store(token: "account-A" as NSString, cloud: FakeCloudStore())
+
+        XCTAssertEqual(back.availablePoints, 77 - cheap.cost)
+        XCTAssertTrue(back.isUnlocked(cheap))
+    }
+
+    func test_aSwitchedAccountDoesNotResurrectTheOldWalletFromLegacyKeys() {
+        defaults.set(500, forKey: "progress.availablePoints")
+        defaults.set(500, forKey: "progress.lifetimePoints")
+        _ = store(token: "account-A" as NSString, cloud: FakeCloudStore())
+        let b = store(token: "account-B" as NSString, cloud: FakeCloudStore())
+        XCTAssertEqual(b.availablePoints, 0)
+        XCTAssertEqual(store(token: "account-B" as NSString, cloud: FakeCloudStore()).availablePoints, 0, "and it stays that way")
+    }
+
+    func test_aMatchingTokenBehavesLikeNoGuardAtAll() {
+        let cloud = FakeCloudStore()
+        let first = store(token: "account-A" as NSString, cloud: cloud)
+        first.award(10)
+        let second = store(token: "account-A" as NSString, cloud: cloud)
+        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 340]))
+        XCTAssertEqual(second.availablePoints, 350)
+        XCTAssertTrue(asideKeys.isEmpty)
+    }
+
+    func test_aNilTokenLeavesTheLocalWalletAloneAndIsNotASwitch() {
+        let a = store(token: "account-A" as NSString, cloud: FakeCloudStore())
+        a.award(10)
+        let signedOut = store(token: nil, cloud: FakeCloudStore())
+        XCTAssertEqual(signedOut.availablePoints, 10)
+        XCTAssertTrue(asideKeys.isEmpty)
+        XCTAssertEqual(store(token: "account-A" as NSString, cloud: FakeCloudStore()).availablePoints, 10,
+                       "signing back into the same account finds the wallet")
+    }
+
+    func test_aLiveAccountChangeSetsTheWalletAsideAndAdoptsTheNewAccount() {
+        let cloud = FakeCloudStore()
+        var token: NSObject = "account-A" as NSString
+        let s = ProgressionStore(defaults: defaults, cloud: cloud, accountToken: { token })
+        s.award(77)
+        let pushes = cloud.saves.count
+
+        token = "account-B" as NSString
+        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 340]), accountChanged: true)
+
+        XCTAssertEqual(s.availablePoints, 340)
+        XCTAssertEqual(cloud.saves.count, pushes, "A's wallet was not pushed into B's cloud")
+        XCTAssertEqual(asideKeys.count, 1)
+    }
+
     // MARK: - Equipped
 
     private let skinA = UnlockCatalog.all.filter { $0.category == .paddleSkin && $0.cost > 0 }[0]

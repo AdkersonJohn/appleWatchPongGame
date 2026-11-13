@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Points earned, things unlocked, and what's currently equipped.
 ///
@@ -9,6 +10,10 @@ final class ProgressionStore {
     private enum Key {
         static let ledger = "progress.ledger"
         static let unreadableLedger = "progress.ledger.unreadable"
+        /// Archived iCloud identity token of the account the local wallet belongs to.
+        static let accountToken = "progress.accountToken"
+        /// A wallet set aside when the Apple ID changed, per old account (suffixed).
+        static let asidePrefix = "progress.ledger.account."
         /// Item ids a re-lock took, until the player taps OK on the notice.
         static let pendingRelockNotice = "progress.relockedNotice"
         // 1.1 keys, read by the migration. Never written or deleted afterwards.
@@ -22,13 +27,22 @@ final class ProgressionStore {
 
     private let defaults: UserDefaults
     private let cloud: LedgerCloudStore
+    private let accountToken: () -> NSObject?
+
+    /// Opaque, changes when the primary iCloud account does; nil when iCloud is signed
+    /// out or off. NSObject because the system hands back an opaque NSCoding object.
+    static let liveAccountToken: () -> NSObject? = { FileManager.default.ubiquityIdentityToken as? NSObject }
 
     /// Tests default to local-only so nothing under test reaches the player's
     /// real iCloud wallet; the app gets the real store.
-    init(defaults: UserDefaults = .standard, cloud: LedgerCloudStore? = nil) {
+    init(defaults: UserDefaults = .standard, cloud: LedgerCloudStore? = nil,
+         accountToken: (() -> NSObject?)? = nil) {
         self.defaults = defaults
-        self.cloud = cloud ?? (NSClassFromString("XCTestCase") == nil ? CloudKitValueStore() : NoCloudStore())
+        let underTest = NSClassFromString("XCTestCase") != nil
+        self.cloud = cloud ?? (underTest ? NoCloudStore() : CloudKitValueStore())
+        self.accountToken = accountToken ?? (underTest ? { nil } : Self.liveAccountToken)
         let remote = self.cloud.loadLedger()
+        switchAccountIfChanged()
         if let data = defaults.data(forKey: Key.ledger) {
             // Keep what we can't read: the next write would otherwise replace it.
             if (try? JSONDecoder().decode(PointsLedger.self, from: data)) == nil {
@@ -43,11 +57,57 @@ final class ProgressionStore {
         self.cloud.startWatching { [weak self] remote, accountChanged in
             // A different iCloud account's wallet is a stranger's: merging would give
             // them our points, items and transaction ids for good (every field is
-            // grow-only), and pushing the union would give us theirs. Keep local and
-            // don't push, so neither wallet is touched.
-            guard !accountChanged else { return }
+            // grow-only), and pushing the union would give us theirs. With an identity
+            // token, set our wallet aside and adopt theirs. Without one we can't tell
+            // what happened, so keep local and don't push.
+            if accountChanged {
+                guard self?.switchAccountIfChanged() == true else { return }
+            }
             self?.reconcile(with: remote)
         }
+    }
+
+    private func archived(_ token: NSObject) -> Data? {
+        try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: false)
+    }
+
+    private func unarchived(_ data: Data) -> NSObject? {
+        guard let u = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+        u.requiresSecureCoding = false
+        return u.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? NSObject
+    }
+
+    private func asideKey(_ archivedToken: Data) -> String {
+        Key.asidePrefix + SHA256.hash(data: archivedToken).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The wallet on this device belongs to the Apple ID it was last written under. If
+    /// that is no longer the signed-in one, merging would hand one person's points,
+    /// items and transaction ids to another for good, so the old wallet is set aside
+    /// (never deleted: switching back restores it) and this account starts from its own
+    /// iCloud. A nil token (signed out, or unreadable) is not a switch: nothing changes.
+    /// Returns true when a switch happened.
+    @discardableResult
+    private func switchAccountIfChanged() -> Bool {
+        guard let token = accountToken(), let now = archived(token) else { return false }
+        guard let storedData = defaults.data(forKey: Key.accountToken), let old = unarchived(storedData) else {
+            defaults.set(now, forKey: Key.accountToken)   // first run with the guard, or unreadable
+            return false
+        }
+        guard !old.isEqual(token) else { return false }
+        if let mine = defaults.data(forKey: Key.ledger) { defaults.set(mine, forKey: asideKey(storedData)) }
+        let returning = defaults.data(forKey: asideKey(now))
+        defaults.removeObject(forKey: asideKey(now))
+        if let returning {
+            defaults.set(returning, forKey: Key.ledger)
+        } else {
+            // Written, not left absent: an absent ledger would re-run the 1.1 migration
+            // and bring the old account's points back.
+            persist(PointsLedger())
+        }
+        clearRelockNotice()
+        defaults.set(now, forKey: Key.accountToken)
+        return true
     }
 
     /// Merges another device's ledger with ours, then brings both copies up to
