@@ -56,4 +56,36 @@ final class PurchaseTests: XCTestCase {
         XCTAssertEqual(PointPack.custom.points, 10)
         XCTAssertEqual(PointPack.custom, PointPack.all.first)
     }
+
+    /// A typo here only fails at runtime, as "no products".
+    func test_productIdsAreExactlyTheOnesRegisteredInAppStoreConnect() {
+        XCTAssertEqual(PointPack.all.map(\.id), [
+            "com.johnadkerson.PongWatch.points10",
+            "com.johnadkerson.PongWatch.points50",
+            "com.johnadkerson.PongWatch.points100",
+            "com.johnadkerson.PongWatch.points500",
+        ])
+    }
+
+    func test_eachPackIsWorthItsOwnPointsForOneUnit() {
+        for pack in PointPack.all {
+            XCTAssertEqual(PointPack.pointsToCredit(productID: pack.id, quantity: 1, isRevoked: false), pack.points)
+        }
+    }
+
+    func test_aQuantityPurchaseMultipliesThePackPoints() {
+        XCTAssertEqual(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 7, isRevoked: false), 70)
+    }
+
+    func test_aRevokedTransactionCreditsNothing() {
+        XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.all[3].id, quantity: 1, isRevoked: true))
+    }
+
+    func test_anUnknownProductCreditsNothing() {
+        XCTAssertNil(PointPack.pointsToCredit(productID: "com.example.other", quantity: 1, isRevoked: false))
+    }
+
+    func test_aNonPositiveQuantityCreditsNothing() {
+        XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 0, isRevoked: false))
+    }
 }

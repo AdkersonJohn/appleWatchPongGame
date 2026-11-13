@@ -69,10 +69,10 @@ final class PurchaseService: ObservableObject {
     private func credit(_ verification: VerificationResult<Transaction>) async throws -> Bool {
         guard case .verified(let transaction) = verification else { throw PurchaseError.unverified }
         // Refunds are Task 5; a revoked transaction must never add points.
-        guard transaction.revocationDate == nil else { return false }
-        guard let pack = PointPack.all.first(where: { $0.id == transaction.productID }) else { return false }
-        let credited = store.recordPurchase(points: pack.points * transaction.purchasedQuantity,
-                                            transactionID: String(transaction.id))
+        guard let points = PointPack.pointsToCredit(productID: transaction.productID,
+                                                    quantity: transaction.purchasedQuantity,
+                                                    isRevoked: transaction.revocationDate != nil) else { return false }
+        let credited = store.recordPurchase(points: points, transactionID: String(transaction.id))
         await transaction.finish()
         return credited
     }

@@ -16,4 +16,13 @@ struct PointPack: Identifiable, Equatable {
 
     /// A custom amount is the smallest pack bought with a quantity.
     static let custom = all[0]
+
+    /// Points a transaction is worth, or nil when it must not be credited: a
+    /// revoked (refunded) purchase, or a product that isn't one of our packs.
+    /// Quantity is what StoreKit says was bought, not what we asked for.
+    static func pointsToCredit(productID: String, quantity: Int, isRevoked: Bool) -> Int? {
+        guard !isRevoked, quantity > 0,
+              let pack = all.first(where: { $0.id == productID }) else { return nil }
+        return pack.points * quantity
+    }
 }
