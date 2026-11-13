@@ -45,3 +45,17 @@ struct PointsLedger: Codable, Equatable {
         return m
     }
 }
+
+/// Tolerant of missing fields, so adding one later can't make old data
+/// undecodable and wipe a balance.
+extension PointsLedger {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        earned = try c.decodeIfPresent([String: Int].self, forKey: .earned) ?? [:]
+        purchased = try c.decodeIfPresent([String: Int].self, forKey: .purchased) ?? [:]
+        refunded = try c.decodeIfPresent([String: Int].self, forKey: .refunded) ?? [:]
+        owned = try c.decodeIfPresent([String: OwnedItem].self, forKey: .owned) ?? [:]
+        creditedTransactions = try c.decodeIfPresent(Set<String>.self, forKey: .creditedTransactions) ?? []
+        revokedTransactions = try c.decodeIfPresent(Set<String>.self, forKey: .revokedTransactions) ?? []
+    }
+}

@@ -8,6 +8,11 @@ import Foundation
 final class ProgressionStore {
     private enum Key {
         static let ledger = "progress.ledger"
+        static let unreadableLedger = "progress.ledger.unreadable"
+        // 1.1 keys, read once by the migration. `equipped` below is unchanged.
+        static let legacyAvailable = "progress.availablePoints"
+        static let legacyLifetime = "progress.lifetimePoints"
+        static let legacyUnlocked = "progress.unlocked"
         static let equipped = "progress.equipped"
     }
 
@@ -15,6 +20,30 @@ final class ProgressionStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        if let data = defaults.data(forKey: Key.ledger) {
+            // Keep what we can't read: the next write would otherwise replace it.
+            if (try? JSONDecoder().decode(PointsLedger.self, from: data)) == nil {
+                defaults.set(data, forKey: Key.unreadableLedger)
+            }
+        } else {
+            migrateLegacyKeys()
+        }
+    }
+
+    /// Builds the ledger from the 1.1 keys so nobody's balance changes on upgrade.
+    private func migrateLegacyKeys() {
+        let keys = [Key.legacyAvailable, Key.legacyLifetime, Key.legacyUnlocked]
+        guard keys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
+        var l = PointsLedger()
+        l.earned[PointsLedger.deviceKind] = defaults.integer(forKey: Key.legacyLifetime)
+        for id in defaults.stringArray(forKey: Key.legacyUnlocked) ?? [] {
+            guard let item = UnlockCatalog.item(id: id), item.cost > 0 else { continue }
+            l.owned[id] = OwnedItem(costPaid: item.cost, boughtAt: .distantPast)
+        }
+        // The balance the player last saw wins. If lifetime disagrees (a price
+        // changed, or the data was inconsistent), restate earned in either direction.
+        l.earned[PointsLedger.deviceKind, default: 0] += defaults.integer(forKey: Key.legacyAvailable) - l.balance
+        ledger = l
     }
 
     // MARK: - Points
@@ -25,7 +54,8 @@ final class ProgressionStore {
             defaults.data(forKey: Key.ledger)
                 .flatMap { try? JSONDecoder().decode(PointsLedger.self, from: $0) } ?? PointsLedger()
         }
-        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.ledger) }
+        // A failed encode must not reach `set`: nil would delete the wallet.
+        set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: Key.ledger) } }
     }
 
     var availablePoints: Int { ledger.balance }

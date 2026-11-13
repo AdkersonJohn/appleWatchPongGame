@@ -55,4 +55,79 @@ final class PointsLedgerTests: XCTestCase {
         XCTAssertEqual(store.availablePoints, 500)
         XCTAssertEqual(store.lifetimePoints, 0, "purchased points are not earned")
     }
+
+    // MARK: - Migration from the 1.1 keys
+
+    private func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "ledger.\(UUID().uuidString)")!
+    }
+
+    /// Costs 40 + 300 + 100 + 400 = 840, and 1180 - 840 = 340: real 1.1 data is consistent.
+    private static let legacyUnlocked = ["celebration.explosion", "celebration.rainbow", "title.rallyking", "title.crownholder"]
+
+    func test_anExistingPlayerKeepsTheirBalanceAndItems() {
+        let defaults = freshDefaults()
+        defaults.set(340, forKey: "progress.availablePoints")
+        defaults.set(1180, forKey: "progress.lifetimePoints")
+        defaults.set(Self.legacyUnlocked, forKey: "progress.unlocked")
+        let s = ProgressionStore(defaults: defaults)
+        XCTAssertEqual(s.availablePoints, 340)
+        XCTAssertEqual(s.lifetimePoints, 1180)
+        XCTAssertTrue(s.isUnlocked(UnlockCatalog.item(id: "celebration.explosion")!))
+    }
+
+    func test_migrationRunsOnceAndDoesNotDoubleCountOnReopen() {
+        let defaults = freshDefaults()
+        defaults.set(340, forKey: "progress.availablePoints")
+        defaults.set(1180, forKey: "progress.lifetimePoints")
+        defaults.set(Self.legacyUnlocked, forKey: "progress.unlocked")
+        ProgressionStore(defaults: defaults).award(10)
+        let reopened = ProgressionStore(defaults: defaults)
+        XCTAssertEqual(reopened.availablePoints, 350)
+        XCTAssertEqual(reopened.lifetimePoints, 1190)
+    }
+
+    func test_aFreshInstallWithNoLegacyKeysStartsEmpty() {
+        let s = ProgressionStore(defaults: freshDefaults())
+        XCTAssertEqual(s.availablePoints, 0)
+        XCTAssertEqual(s.lifetimePoints, 0)
+    }
+
+    func test_migrationKeepsTheBalanceThePlayerSawEvenWhenLifetimeDisagrees() {
+        let item = UnlockCatalog.item(id: "celebration.explosion")!
+        let defaults = freshDefaults()
+        defaults.set(5, forKey: "progress.availablePoints")
+        defaults.set(item.cost + 10, forKey: "progress.lifetimePoints")
+        defaults.set([item.id], forKey: "progress.unlocked")
+        let s = ProgressionStore(defaults: defaults)
+        XCTAssertEqual(s.availablePoints, 5)
+        XCTAssertEqual(s.lifetimePoints, item.cost + 5, "lifetime is restated to fit")
+    }
+
+    // MARK: - Durability
+
+    func test_ledgerSurvivesAJSONRoundTrip() throws {
+        var l = PointsLedger()
+        l.earned = ["watch": 3]; l.purchased = ["phone": 500]; l.refunded = ["phone": 1]
+        l.owned = ["x": OwnedItem(costPaid: 40, boughtAt: Date(timeIntervalSince1970: 1_700_000_000))]
+        l.creditedTransactions = ["t1", "t2"]; l.revokedTransactions = ["t1"]
+        let back = try JSONDecoder().decode(PointsLedger.self, from: JSONEncoder().encode(l))
+        XCTAssertEqual(back, l)
+    }
+
+    func test_decodingToleratesFieldsMissingFromOlderData() throws {
+        let json = Data(#"{"earned":{"watch":5}}"#.utf8)
+        let l = try JSONDecoder().decode(PointsLedger.self, from: json)
+        XCTAssertEqual(l.earned, ["watch": 5])
+        XCTAssertTrue(l.owned.isEmpty)
+    }
+
+    func test_anUnreadableLedgerIsKeptAsideRatherThanOverwritten() {
+        let defaults = freshDefaults()
+        let junk = Data("not json".utf8)
+        defaults.set(junk, forKey: "progress.ledger")
+        let s = ProgressionStore(defaults: defaults)
+        s.award(5)
+        XCTAssertEqual(defaults.data(forKey: "progress.ledger.unreadable"), junk)
+    }
 }
