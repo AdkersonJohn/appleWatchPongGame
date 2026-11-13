@@ -5,6 +5,9 @@ import StoreKit
 enum PurchaseError: Error {
     case unverified
     case productUnavailable
+    /// Quantity outside 1...PurchaseService.maxQuantity. Rejected, never clamped:
+    /// clamping would charge a different amount than the screen showed.
+    case invalidQuantity
 }
 
 /// What a purchase attempt came to, so the screen never reports a credited
@@ -43,13 +46,15 @@ final class PurchaseService: ObservableObject {
         }
     }
 
-    /// Apple limits one transaction to 10 units.
+    /// Units per transaction. Believed to be Apple's limit but UNCONFIRMED; Task 7
+    /// checks it against real sandbox products (at the bound and one above).
     static let maxQuantity = 10
 
     func dismissRelocked() { relocked = [] }
 
     /// A pending purchase arrives later through the updates listener.
     func purchase(_ pack: PointPack, quantity: Int = 1) async throws -> PurchaseOutcome {
+        guard (1...Self.maxQuantity).contains(quantity) else { throw PurchaseError.invalidQuantity }
         guard let product = packs.first(where: { $0.pack == pack })?.product else {
             throw PurchaseError.productUnavailable
         }
