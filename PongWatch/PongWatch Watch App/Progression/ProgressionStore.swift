@@ -17,9 +17,13 @@ final class ProgressionStore {
     }
 
     private let defaults: UserDefaults
+    private let cloud: LedgerCloudStore
 
-    init(defaults: UserDefaults = .standard) {
+    /// Only the app's real defaults sync by default; an isolated suite (tests,
+    /// previews) stays local so it can't write into the player's iCloud wallet.
+    init(defaults: UserDefaults = .standard, cloud: LedgerCloudStore? = nil) {
         self.defaults = defaults
+        self.cloud = cloud ?? (defaults === UserDefaults.standard ? CloudKitValueStore() : NoCloudStore())
         if let data = defaults.data(forKey: Key.ledger) {
             // Keep what we can't read: the next write would otherwise replace it.
             if (try? JSONDecoder().decode(PointsLedger.self, from: data)) == nil {
@@ -28,6 +32,17 @@ final class ProgressionStore {
         } else {
             migrateLegacyKeys()
         }
+        mergeRemote(self.cloud.loadLedger())
+        self.cloud.startWatching { [weak self] in self?.mergeRemote($0) }
+    }
+
+    /// Folds another device's ledger into ours. Writes only when that changes
+    /// something, so two devices can't keep echoing the same value at each other.
+    private func mergeRemote(_ remote: PointsLedger?) {
+        guard let remote else { return }
+        let local = ledger
+        let merged = PointsLedger.merge(local, remote)
+        if merged != local { ledger = merged }
     }
 
     /// Builds the ledger from the 1.1 keys so nobody's balance changes on upgrade.
@@ -48,14 +63,20 @@ final class ProgressionStore {
 
     // MARK: - Points
 
-    /// The balance is derived from this, never stored on its own.
+    /// The balance is derived from this, never stored on its own. Every ledger
+    /// mutation goes through this setter, which is the only place that writes
+    /// locally and pushes to the cloud, so a new mutation can't skip the push.
     private var ledger: PointsLedger {
         get {
             defaults.data(forKey: Key.ledger)
                 .flatMap { try? JSONDecoder().decode(PointsLedger.self, from: $0) } ?? PointsLedger()
         }
         // A failed encode must not reach `set`: nil would delete the wallet.
-        set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: Key.ledger) } }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            defaults.set(data, forKey: Key.ledger)
+            cloud.save(newValue)
+        }
     }
 
     var availablePoints: Int { ledger.balance }
