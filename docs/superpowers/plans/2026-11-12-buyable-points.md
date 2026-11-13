@@ -226,6 +226,63 @@ git commit -am "feat(progression): sync the wallet through iCloud"
 
 ---
 
+### Task 3b: Equipped selections sync too
+
+Added after Task 3's review, at John's request. Task 3 syncs the wallet — points and
+owned items — but equipped choices stay in their own `UserDefaults` key, so a paddle skin
+bought and equipped on the phone is owned on the watch and not equipped there.
+
+**Files:**
+- Modify: `PongWatch/PongWatch Watch App/Progression/PointsLedger.swift`
+- Modify: `PongWatch/PongWatch Watch App/Progression/ProgressionStore.swift`
+- Test: `PongWatch/PongWatch Watch AppTests/LedgerSyncTests.swift`
+
+**Interfaces:**
+- Consumes: `PointsLedger.merge`, the save-and-push choke point from Task 3.
+- Produces:
+  - `struct EquippedChoice: Codable, Equatable { let itemID: String; let changedAt: Date }`
+  - `var equipped: [String: EquippedChoice]` on `PointsLedger`, keyed by
+    `UnlockCategory.rawValue`
+  - `ProgressionStore.equipped(in:)` and `equip(_:)` keep their current signatures and
+    behaviour, now reading and writing the ledger
+
+Equipped state is the one field that is not grow-only: two devices can equip different
+items in the same category while apart. `merge` resolves a category by the later
+`changedAt`, with the item id breaking an exact tie so the merge stays order-independent.
+
+- [ ] **Step 1: Write the failing tests**
+
+```swift
+func test_equippingOnOneDeviceEquipsItOnTheOther()
+func test_theMoreRecentChoiceWinsWhenTwoDevicesEquipDifferentItems()
+func test_mergingEquippedChoicesIsOrderIndependent()
+/// Equipping something you do not own is still ignored, as it was before.
+func test_cannotEquipSomethingNotOwnedEvenAcrossDevices()
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Expected: FAIL — `value of type 'PointsLedger' has no member 'equipped'`
+
+- [ ] **Step 3: Move equipped state into the ledger**
+
+Migrate the existing `progress.equipped` dictionary into `ledger.equipped` on first load,
+with `changedAt: .distantPast` so any later real choice beats it. Leave the legacy key in
+place rather than deleting it — a downgrade should not lose the player's choice.
+
+- [ ] **Step 4: Run the tests, then the full unit bundle**
+
+Expected: PASS. `test_equippingRemembersTheChoicePerCategory` and
+`test_cannotEquipSomethingNotOwned` in `ProgressionTests.swift` must still pass untouched.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git commit -am "feat(progression): sync equipped cosmetics between devices"
+```
+
+---
+
 ### Task 4: Point packs and StoreKit purchasing
 
 **Files:**
