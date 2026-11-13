@@ -179,4 +179,84 @@ final class LedgerSyncTests: XCTestCase {
         cloud.otherDeviceWrites(remote)
         XCTAssertEqual(s.availablePoints, 200 - cheap.cost)
     }
+
+    // MARK: - Equipped
+
+    private let skinA = UnlockCatalog.all.filter { $0.category == .paddleSkin && $0.cost > 0 }[0]
+    private let skinB = UnlockCatalog.all.filter { $0.category == .paddleSkin && $0.cost > 0 }[1]
+
+    private func equipped(_ items: (Unlockable, Date)...) -> PointsLedger {
+        var l = PointsLedger()
+        for (item, at) in items {
+            l.owned[item.id] = OwnedItem(costPaid: item.cost, boughtAt: .distantPast)
+            l.equipped[item.category.rawValue] = EquippedChoice(itemID: item.id, changedAt: at)
+        }
+        return l
+    }
+
+    func test_equippingOnOneDeviceEquipsItOnTheOther() {
+        let cloud = FakeCloudStore()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        cloud.otherDeviceWrites(equipped((skinA, Date())))
+        XCTAssertEqual(s.equipped(in: .paddleSkin), skinA.id)
+
+        s.award(1000)
+        s.buy(skinB)
+        s.equip(skinB)
+        XCTAssertEqual(cloud.stored?.equipped[UnlockCategory.paddleSkin.rawValue]?.itemID, skinB.id, "equipping is pushed")
+    }
+
+    func test_theMoreRecentChoiceWinsWhenTwoDevicesEquipDifferentItems() {
+        let cloud = FakeCloudStore()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        s.award(1000)
+        s.buy(skinA)
+        s.buy(skinB)
+        s.equip(skinA)
+        // The other device chose B later, while this one was apart from it.
+        var remote = equipped((skinB, Date().addingTimeInterval(60)))
+        remote.owned[skinA.id] = OwnedItem(costPaid: skinA.cost, boughtAt: .distantPast)
+        cloud.otherDeviceWrites(remote)
+        XCTAssertEqual(s.equipped(in: .paddleSkin), skinB.id)
+
+        // And an older remote choice does not displace a newer local one.
+        s.equip(skinA)
+        cloud.otherDeviceWrites(equipped((skinB, Date().addingTimeInterval(-60))))
+        XCTAssertEqual(s.equipped(in: .paddleSkin), skinA.id)
+    }
+
+    func test_mergingEquippedChoicesIsOrderIndependent() {
+        let t = Date()
+        let a = equipped((skinA, t))
+        let b = equipped((skinB, t.addingTimeInterval(5)))
+        XCTAssertEqual(PointsLedger.merge(a, b), PointsLedger.merge(b, a))
+        XCTAssertEqual(PointsLedger.merge(a, b).equipped[UnlockCategory.paddleSkin.rawValue]?.itemID, skinB.id)
+
+        let tieA = equipped((skinA, t)), tieB = equipped((skinB, t))
+        XCTAssertEqual(PointsLedger.merge(tieA, tieB), PointsLedger.merge(tieB, tieA), "an exact tie still has one answer")
+    }
+
+    /// Review: ownership is the gate, and a synced ledger must not bypass it.
+    func test_cannotEquipSomethingNotOwnedEvenAcrossDevices() {
+        let cloud = FakeCloudStore()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 10]))
+        s.equip(skinA)
+        XCTAssertNil(s.equipped(in: .paddleSkin))
+        XCTAssertNil(cloud.stored?.equipped[UnlockCategory.paddleSkin.rawValue])
+    }
+
+    func test_aChoiceFromTheOldEquippedKeyMovesIntoTheLedgerAndLosesToAnyRealChoice() {
+        defaults.set([UnlockCategory.paddleSkin.rawValue: skinA.id], forKey: "progress.equipped")
+        let cloud = FakeCloudStore()
+        cloud.stored = equipped((skinB, Date()))
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        XCTAssertEqual(s.equipped(in: .paddleSkin), skinB.id)
+
+        let fresh = UserDefaults(suiteName: "ledger-sync-\(UUID().uuidString)")!
+        fresh.set([UnlockCategory.paddleSkin.rawValue: skinA.id], forKey: "progress.equipped")
+        let migrated = ProgressionStore(defaults: fresh, cloud: NoCloudStore())
+        XCTAssertEqual(migrated.equipped(in: .paddleSkin), skinA.id)
+        XCTAssertNotNil(defaults.dictionary(forKey: "progress.equipped"), "the legacy key is left in place")
+    }
 }

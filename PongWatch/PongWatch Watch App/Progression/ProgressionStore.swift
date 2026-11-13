@@ -9,11 +9,12 @@ final class ProgressionStore {
     private enum Key {
         static let ledger = "progress.ledger"
         static let unreadableLedger = "progress.ledger.unreadable"
-        // 1.1 keys, read once by the migration. `equipped` below is unchanged.
+        // 1.1 keys, read by the migration. Never written or deleted afterwards,
+        // so a downgrade still finds the player's last choice.
         static let legacyAvailable = "progress.availablePoints"
         static let legacyLifetime = "progress.lifetimePoints"
         static let legacyUnlocked = "progress.unlocked"
-        static let equipped = "progress.equipped"
+        static let legacyEquipped = "progress.equipped"
     }
 
     private let defaults: UserDefaults
@@ -34,6 +35,7 @@ final class ProgressionStore {
             // Local only: pushing before the remote is merged would overwrite it.
             persist(migrated)
         }
+        migrateLegacyEquipped()
         reconcile(with: remote)
         self.cloud.startWatching { [weak self] in self?.reconcile(with: $0) }
     }
@@ -46,6 +48,18 @@ final class ProgressionStore {
         let merged = PointsLedger.merge(local, remote ?? PointsLedger())
         if merged != local { persist(merged) }
         if merged != (remote ?? PointsLedger()) { cloud.save(merged) }
+    }
+
+    /// Choices made before they lived in the ledger. `.distantPast` so any real
+    /// choice, here or on another device, beats them; a category already in the
+    /// ledger is never overwritten, which makes this safe to run every launch.
+    private func migrateLegacyEquipped() {
+        let old = defaults.dictionary(forKey: Key.legacyEquipped) as? [String: String] ?? [:]
+        var l = ledger
+        for (category, id) in old where l.equipped[category] == nil {
+            l.equipped[category] = EquippedChoice(itemID: id, changedAt: .distantPast)
+        }
+        if l != ledger { persist(l) }
     }
 
     /// Builds the ledger from the 1.1 keys so nobody's balance changes on upgrade.
@@ -143,19 +157,14 @@ final class ProgressionStore {
 
     // MARK: - Equipped
 
-    private var equippedByCategory: [String: String] {
-        get { defaults.dictionary(forKey: Key.equipped) as? [String: String] ?? [:] }
-        set { defaults.set(newValue, forKey: Key.equipped) }
-    }
-
     func equipped(in category: UnlockCategory) -> String? {
-        equippedByCategory[category.rawValue]
+        ledger.equipped[category.rawValue]?.itemID
     }
 
     /// Equipping something you don't own is ignored rather than trusted.
     func equip(_ item: Unlockable) {
         guard isUnlocked(item) else { return }
-        equippedByCategory[item.category.rawValue] = item.id
+        ledger.equipped[item.category.rawValue] = EquippedChoice(itemID: item.id, changedAt: Date())
     }
 
     /// What's equipped in a category, falling back to that category's free item

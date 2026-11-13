@@ -5,6 +5,11 @@ struct OwnedItem: Codable, Equatable {
     let boughtAt: Date
 }
 
+struct EquippedChoice: Codable, Equatable {
+    let itemID: String
+    let changedAt: Date
+}
+
 /// The wallet as facts that only ever accumulate, so two devices can merge
 /// their copies without one overwriting the other. The balance is derived,
 /// never stored. Counters are keyed by device kind ("watch"/"phone"), not per
@@ -14,6 +19,9 @@ struct PointsLedger: Codable, Equatable {
     var purchased: [String: Int] = [:]
     var refunded: [String: Int] = [:]
     var owned: [String: OwnedItem] = [:]
+    /// The one field that isn't grow-only: keyed by `UnlockCategory.rawValue`,
+    /// and merged by the later `changedAt`.
+    var equipped: [String: EquippedChoice] = [:]
     /// Separate sets: a StoreKit revocation reuses the purchase's transaction
     /// id, so one shared set would make every refund look already handled.
     var creditedTransactions: Set<String> = []
@@ -40,6 +48,10 @@ struct PointsLedger: Codable, Equatable {
         m.purchased = a.purchased.merging(b.purchased, uniquingKeysWith: max)
         m.refunded = a.refunded.merging(b.refunded, uniquingKeysWith: max)
         m.owned = a.owned.merging(b.owned) { $0.boughtAt <= $1.boughtAt ? $0 : $1 }
+        // An exact tie falls to the larger id so the result doesn't depend on argument order.
+        m.equipped = a.equipped.merging(b.equipped) {
+            ($0.changedAt, $0.itemID) >= ($1.changedAt, $1.itemID) ? $0 : $1
+        }
         m.creditedTransactions = a.creditedTransactions.union(b.creditedTransactions)
         m.revokedTransactions = a.revokedTransactions.union(b.revokedTransactions)
         return m
@@ -55,6 +67,7 @@ extension PointsLedger {
         purchased = try c.decodeIfPresent([String: Int].self, forKey: .purchased) ?? [:]
         refunded = try c.decodeIfPresent([String: Int].self, forKey: .refunded) ?? [:]
         owned = try c.decodeIfPresent([String: OwnedItem].self, forKey: .owned) ?? [:]
+        equipped = try c.decodeIfPresent([String: EquippedChoice].self, forKey: .equipped) ?? [:]
         creditedTransactions = try c.decodeIfPresent(Set<String>.self, forKey: .creditedTransactions) ?? []
         revokedTransactions = try c.decodeIfPresent(Set<String>.self, forKey: .revokedTransactions) ?? []
     }
