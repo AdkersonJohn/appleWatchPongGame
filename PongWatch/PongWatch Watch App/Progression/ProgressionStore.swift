@@ -9,8 +9,11 @@ final class ProgressionStore {
     private enum Key {
         static let ledger = "progress.ledger"
         static let unreadableLedger = "progress.ledger.unreadable"
-        // 1.1 keys, read by the migration. Never written or deleted afterwards,
-        // so a downgrade still finds the player's last choice.
+        /// Item ids a re-lock took, until the player taps OK on the notice.
+        static let pendingRelockNotice = "progress.relockedNotice"
+        // 1.1 keys, read by the migration. Never written or deleted afterwards.
+        // Only `equipped` is useful to a downgrade: once progress.ledger exists, points
+        // and unlocks earned on 1.1 are never read back from these keys.
         static let legacyAvailable = "progress.availablePoints"
         static let legacyLifetime = "progress.lifetimePoints"
         static let legacyUnlocked = "progress.unlocked"
@@ -37,7 +40,14 @@ final class ProgressionStore {
         }
         migrateLegacyEquipped()
         reconcile(with: remote)
-        self.cloud.startWatching { [weak self] in self?.reconcile(with: $0) }
+        self.cloud.startWatching { [weak self] remote, accountChanged in
+            // A different iCloud account's wallet is a stranger's: merging would give
+            // them our points, items and transaction ids for good (every field is
+            // grow-only), and pushing the union would give us theirs. Keep local and
+            // don't push, so neither wallet is touched.
+            guard !accountChanged else { return }
+            self?.reconcile(with: remote)
+        }
     }
 
     /// Merges another device's ledger with ours, then brings both copies up to
@@ -46,9 +56,25 @@ final class ProgressionStore {
     private func reconcile(with remote: PointsLedger?) {
         let local = ledger
         var merged = PointsLedger.merge(local, remote ?? PointsLedger())
-        merged.settle()
+        let relocked = merged.settle()
         if merged != local { persist(merged) }
+        noteRelocked(relocked)
         if merged != (remote ?? PointsLedger()) { cloud.save(merged) }
+    }
+
+    /// Items waiting to be announced, persisted so a refund that lands at launch
+    /// is still told to the player whenever they next open Unlocks.
+    var pendingRelockNotice: [Unlockable] {
+        (defaults.stringArray(forKey: Key.pendingRelockNotice) ?? []).compactMap(UnlockCatalog.item(id:))
+    }
+
+    func clearRelockNotice() { defaults.removeObject(forKey: Key.pendingRelockNotice) }
+
+    private func noteRelocked(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        var pending = defaults.stringArray(forKey: Key.pendingRelockNotice) ?? []
+        pending += ids.filter { !pending.contains($0) }
+        defaults.set(pending, forKey: Key.pendingRelockNotice)
     }
 
     /// Choices made before they lived in the ledger. `.distantPast` so any real
@@ -67,6 +93,12 @@ final class ProgressionStore {
     private func legacyLedger() -> PointsLedger? {
         let keys = [Key.legacyAvailable, Key.legacyLifetime, Key.legacyUnlocked]
         guard keys.contains(where: { defaults.object(forKey: $0) != nil }) else { return nil }
+        // ACCEPTED, don't "fix": earned includes the cost of this device's owned items.
+        // Merging sums earned across device kinds but unions owned, so an item owned on
+        // both a 1.1 watch and a 1.1 phone is counted twice in earned and subtracted
+        // once: the player gets the overlap back as free points, once, on first merge.
+        // That is always in their favour, and the only local fix would restate
+        // "Earned all-time" downward, which is worse.
         var l = PointsLedger()
         l.earned[PointsLedger.deviceKind] = defaults.integer(forKey: Key.legacyLifetime)
         for id in defaults.stringArray(forKey: Key.legacyUnlocked) ?? [] {
@@ -118,8 +150,10 @@ final class ProgressionStore {
         var l = ledger
         guard points > 0, l.creditedTransactions.insert(transactionID).inserted else { return false }
         l.purchasedByTx[transactionID] = points
-        l.settle()
+        // A refund that arrived first starts counting now, so this can re-lock.
+        let relocked = l.settle()
         ledger = l
+        noteRelocked(relocked)
         return true
     }
 
@@ -133,6 +167,7 @@ final class ProgressionStore {
         l.refundedByTx[transactionID] = points
         let relocked = l.settle()
         ledger = l
+        noteRelocked(relocked)
         return relocked.compactMap(UnlockCatalog.item(id:))
     }
 

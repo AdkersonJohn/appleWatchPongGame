@@ -6,18 +6,18 @@ import XCTest
 private final class FakeCloudStore: LedgerCloudStore {
     var stored: PointsLedger?
     var saves: [PointsLedger] = []
-    private var handler: ((PointsLedger) -> Void)?
+    private var handler: ((PointsLedger, Bool) -> Void)?
     /// iCloud signed out or switched off: saves vanish, nothing is returned or announced.
     var isOff = false
 
     func loadLedger() -> PointsLedger? { isOff ? nil : stored }
     func save(_ ledger: PointsLedger) { guard !isOff else { return }; stored = ledger; saves.append(ledger) }
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) { handler = onRemoteChange }
+    func startWatching(_ onRemoteChange: @escaping (PointsLedger, Bool) -> Void) { handler = onRemoteChange }
 
-    func otherDeviceWrites(_ ledger: PointsLedger) {
+    func otherDeviceWrites(_ ledger: PointsLedger, accountChanged: Bool = false) {
         guard !isOff else { return }
         stored = ledger
-        handler?(ledger)
+        handler?(ledger, accountChanged)
     }
 }
 
@@ -169,6 +169,42 @@ final class LedgerSyncTests: XCTestCase {
         XCTAssertEqual(s.availablePoints, 200 + 300 - cheap.cost - other.cost)
     }
 
+    /// Both devices spent what they could see; together they overspent, so the merge
+    /// must re-lock the newest paid item and tell the player.
+    func test_aMergeThatGoesNegativeRelocksTheNewestItemAndLeavesANotice() {
+        let cloud = FakeCloudStore()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        s.award(100)
+        XCTAssertTrue(s.buy(other))   // 60, bought now
+
+        var remote = PointsLedger()
+        remote.earned[PointsLedger.deviceKind] = 100
+        remote.earned["phone-elsewhere"] = 200
+        remote.owned["celebration.rainbow"] = OwnedItem(costPaid: 300, boughtAt: Date().addingTimeInterval(60))
+        cloud.otherDeviceWrites(remote)   // merged: 300 granted, 360 spent
+
+        XCTAssertFalse(s.isUnlocked(UnlockCatalog.item(id: "celebration.rainbow")!))
+        XCTAssertTrue(s.isUnlocked(other))
+        XCTAssertEqual(s.availablePoints, 300 - other.cost)
+        XCTAssertEqual(s.pendingRelockNotice.map(\.id), ["celebration.rainbow"])
+        XCTAssertEqual(ProgressionStore(defaults: defaults, cloud: NoCloudStore()).pendingRelockNotice.map(\.id),
+                       ["celebration.rainbow"], "the notice outlives the session")
+    }
+
+    /// A switch of iCloud account swaps the store's contents for a stranger's wallet.
+    func test_anAccountChangeNeitherMergesTheRemoteNorPushesAnything() {
+        let cloud = FakeCloudStore()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        s.award(77)
+        let pushes = cloud.saves.count
+
+        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 340], owned: [cheap]), accountChanged: true)
+
+        XCTAssertEqual(s.availablePoints, 77)
+        XCTAssertFalse(s.isUnlocked(cheap))
+        XCTAssertEqual(cloud.saves.count, pushes)
+    }
+
     func test_bothDevicesBuyingTheSameItemChargesItOnce() {
         let cloud = FakeCloudStore()
         let s = ProgressionStore(defaults: defaults, cloud: cloud)
@@ -257,7 +293,9 @@ final class LedgerSyncTests: XCTestCase {
         let s = ProgressionStore(defaults: defaults, cloud: cloud)
         XCTAssertEqual(s.equipped(in: .paddleSkin), skinB.id)
 
-        let fresh = UserDefaults(suiteName: "ledger-sync-\(UUID().uuidString)")!
+        let freshName = "ledger-sync-\(UUID().uuidString)"
+        addTeardownBlock { UserDefaults().removePersistentDomain(forName: freshName) }
+        let fresh = UserDefaults(suiteName: freshName)!
         fresh.set([UnlockCategory.paddleSkin.rawValue: skinA.id], forKey: "progress.equipped")
         let migrated = ProgressionStore(defaults: fresh, cloud: NoCloudStore())
         XCTAssertEqual(migrated.equipped(in: .paddleSkin), skinA.id)

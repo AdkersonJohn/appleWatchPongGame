@@ -25,7 +25,8 @@ enum PurchaseOutcome: Equatable {
 final class PurchaseService: ObservableObject {
     @Published private(set) var packs: [(pack: PointPack, product: Product)] = []
     @Published private(set) var isPurchasing = false
-    /// Items a refund re-locked, until the player has been told.
+    /// Items a refund or sync re-locked, until the player has been told. Mirrors a
+    /// list the store persists, so it survives a relaunch.
     @Published private(set) var relocked: [Unlockable] = []
     /// Bumped whenever the wallet changes here, so open screens can redraw.
     @Published private(set) var walletChanges = 0
@@ -35,6 +36,7 @@ final class PurchaseService: ObservableObject {
 
     init(store: ProgressionStore) {
         self.store = store
+        relocked = store.pendingRelockNotice
     }
 
     deinit { updatesTask?.cancel() }
@@ -50,10 +52,17 @@ final class PurchaseService: ObservableObject {
     /// checks it against real sandbox products (at the bound and one above).
     static let maxQuantity = 10
 
-    func dismissRelocked() { relocked = [] }
+    func refreshRelocked() { relocked = store.pendingRelockNotice }
+
+    func dismissRelocked() {
+        store.clearRelockNotice()
+        relocked = []
+    }
 
     /// A pending purchase arrives later through the updates listener.
     func purchase(_ pack: PointPack, quantity: Int = 1) async throws -> PurchaseOutcome {
+        // Before the first await: two taps in one frame would otherwise both get past.
+        guard !isPurchasing else { return .cancelled }
         guard (1...Self.maxQuantity).contains(quantity) else { throw PurchaseError.invalidQuantity }
         guard let product = packs.first(where: { $0.pack == pack })?.product else {
             throw PurchaseError.productUnavailable
@@ -95,16 +104,20 @@ final class PurchaseService: ObservableObject {
     private func credit(_ verification: VerificationResult<Transaction>) async throws -> PurchaseOutcome {
         guard case .verified(let transaction) = verification else { throw PurchaseError.unverified }
         guard let points = PointPack.pointsToCredit(productID: transaction.productID,
-                                                    quantity: transaction.purchasedQuantity,
-                                                    isRevoked: false) else { return .alreadyCredited }
+                                                    quantity: transaction.purchasedQuantity) else {
+            // Not ours: finish it, or StoreKit redelivers it on every launch.
+            await transaction.finish()
+            return .alreadyCredited
+        }
         let id = String(transaction.id)
         var credited = false
         if transaction.revocationDate == nil {
             credited = store.recordPurchase(points: points, transactionID: id)
         } else {
             // A refund reverses the whole purchase, even points already spent.
-            relocked += store.revoke(points: points, transactionID: id)
+            store.revoke(points: points, transactionID: id)
         }
+        refreshRelocked()
         walletChanges += 1
         await transaction.finish()
         return credited ? .credited(points: points) : .alreadyCredited

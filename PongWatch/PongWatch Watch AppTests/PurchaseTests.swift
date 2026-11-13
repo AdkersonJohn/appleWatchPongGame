@@ -69,24 +69,20 @@ final class PurchaseTests: XCTestCase {
 
     func test_eachPackIsWorthItsOwnPointsForOneUnit() {
         for pack in PointPack.all {
-            XCTAssertEqual(PointPack.pointsToCredit(productID: pack.id, quantity: 1, isRevoked: false), pack.points)
+            XCTAssertEqual(PointPack.pointsToCredit(productID: pack.id, quantity: 1), pack.points)
         }
     }
 
     func test_aQuantityPurchaseMultipliesThePackPoints() {
-        XCTAssertEqual(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 7, isRevoked: false), 70)
-    }
-
-    func test_aRevokedTransactionCreditsNothing() {
-        XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.all[3].id, quantity: 1, isRevoked: true))
+        XCTAssertEqual(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 7), 70)
     }
 
     func test_anUnknownProductCreditsNothing() {
-        XCTAssertNil(PointPack.pointsToCredit(productID: "com.example.other", quantity: 1, isRevoked: false))
+        XCTAssertNil(PointPack.pointsToCredit(productID: "com.example.other", quantity: 1))
     }
 
     func test_aNonPositiveQuantityCreditsNothing() {
-        XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 0, isRevoked: false))
+        XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 0))
     }
 
     // MARK: - Refunds
@@ -133,6 +129,25 @@ final class PurchaseTests: XCTestCase {
             XCTAssertNotNil(s.equippedItem(in: category), "\(category) must keep something equipped")
         }
         XCTAssertTrue(s.isUnlocked(item("celebration.sparks")))
+    }
+
+    func test_aRevocationLargerThanItsCreditNeverEatsEarnedPoints() {
+        let s = makeStore()
+        s.award(100)
+        s.recordPurchase(points: 50, transactionID: "tx-1")
+        s.revoke(points: 500, transactionID: "tx-1")
+        XCTAssertEqual(s.availablePoints, 100, "only the 50 that transaction credited comes back")
+    }
+
+    func test_aRelockNoticeSurvivesARelaunchUntilDismissed() {
+        let s = makeStore()
+        s.recordPurchase(points: 40, transactionID: "tx-1")
+        XCTAssertTrue(s.buy(item("celebration.explosion")))
+        s.revoke(points: 40, transactionID: "tx-1")
+
+        XCTAssertEqual(makeStore().pendingRelockNotice.map(\.id), ["celebration.explosion"])
+        makeStore().clearRelockNotice()
+        XCTAssertTrue(makeStore().pendingRelockNotice.isEmpty)
     }
 
     func test_anItemRelockedWhileEquippedFallsBackToTheCategorysFreeItem() {
@@ -316,8 +331,8 @@ private final class RecordingCloud: LedgerCloudStore {
     private(set) var saved: [PointsLedger] = []
     func loadLedger() -> PointsLedger? { nil }
     func save(_ ledger: PointsLedger) { saved.append(ledger) }
-    private var onRemote: ((PointsLedger) -> Void)?
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) { onRemote = onRemoteChange }
+    private var onRemote: ((PointsLedger, Bool) -> Void)?
+    func startWatching(_ onRemoteChange: @escaping (PointsLedger, Bool) -> Void) { onRemote = onRemoteChange }
     /// Another device's ledger arriving.
-    func deliver(_ ledger: PointsLedger) { onRemote?(ledger) }
+    func deliver(_ ledger: PointsLedger) { onRemote?(ledger, false) }
 }

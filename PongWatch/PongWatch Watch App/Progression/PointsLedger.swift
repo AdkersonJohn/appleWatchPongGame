@@ -52,10 +52,11 @@ struct PointsLedger: Codable, Equatable {
     private var granted: Int { earned.values.reduce(0, +) + purchasedByTx.values.reduce(0, +) }
 
     /// A refund counts only once its purchase's credit is known, so one that
-    /// arrives early waits instead of eating points the player earned. Capped at
-    /// everything granted: past that, re-locking could never make the balance whole.
+    /// arrives early waits instead of eating points the player earned. Capped per
+    /// transaction at what that transaction credited, so an oversized revocation
+    /// can never reach earned points.
     private var countedRefunds: Int {
-        min(refundedByTx.filter { creditedTransactions.contains($0.key) }.values.reduce(0, +), granted)
+        creditedTransactions.reduce(0) { $0 + min(refundedByTx[$1] ?? 0, purchasedByTx[$1] ?? 0) }
     }
 
     var balance: Int {
@@ -89,7 +90,7 @@ struct PointsLedger: Codable, Equatable {
         // Drop tombstoned entries before merging: the merge keeps the earlier boughtAt,
         // which would otherwise let a stale copy shadow a later re-purchase.
         let live = { (l: PointsLedger) in l.owned.filter { !m.relocked.contains(Tombstone(itemID: $0.key, boughtAt: $0.value.boughtAt)) } }
-        m.owned = live(a).merging(live(b)) { $0.boughtAt <= $1.boughtAt ? $0 : $1 }
+        m.owned = live(a).merging(live(b)) { ($0.boughtAt, $0.costPaid) <= ($1.boughtAt, $1.costPaid) ? $0 : $1 }
         // An exact tie falls to the larger id so the result doesn't depend on argument order.
         m.equipped = a.equipped.merging(b.equipped) {
             ($0.changedAt, $0.itemID) >= ($1.changedAt, $1.itemID) ? $0 : $1
@@ -102,6 +103,8 @@ struct PointsLedger: Codable, Equatable {
 
 /// Tolerant of missing fields, so adding one later can't make old data
 /// undecodable and wipe a balance.
+/// WARNING: this does not protect the nested types (OwnedItem, EquippedChoice,
+/// Tombstone), which decode strictly: they may only ever gain optional fields.
 extension PointsLedger {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

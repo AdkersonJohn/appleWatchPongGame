@@ -35,8 +35,11 @@ final class PointsLedgerTests: XCTestCase {
     func test_mergeIsOrderIndependent() {
         var a = PointsLedger(); a.earned = ["watch": 5]; a.purchasedByTx = ["t1": 9]
         a.creditedTransactions = ["t1"]; a.revokedTransactions = ["r1"]
+        let tie = Date(timeIntervalSince1970: 10)
+        a.owned = ["x": OwnedItem(costPaid: 40, boughtAt: tie)]
         var b = PointsLedger(); b.earned = ["watch": 8, "phone": 2]; b.refundedByTx = ["t2": 1]
         b.creditedTransactions = ["t2"]
+        b.owned = ["x": OwnedItem(costPaid: 60, boughtAt: tie)]   // same instant, different cost
         XCTAssertEqual(PointsLedger.merge(a, b), PointsLedger.merge(b, a))
     }
 
@@ -112,6 +115,8 @@ final class PointsLedgerTests: XCTestCase {
         l.earned = ["watch": 3]; l.purchasedByTx = ["t1": 500]; l.refundedByTx = ["t1": 1]
         l.owned = ["x": OwnedItem(costPaid: 40, boughtAt: Date(timeIntervalSince1970: 1_700_000_000))]
         l.creditedTransactions = ["t1", "t2"]; l.revokedTransactions = ["t1"]
+        l.relocked = [Tombstone(itemID: "y", boughtAt: Date(timeIntervalSince1970: 1_600_000_000))]
+        l.equipped = ["paddleSkin": EquippedChoice(itemID: "x", changedAt: Date(timeIntervalSince1970: 1_700_000_100))]
         let back = try JSONDecoder().decode(PointsLedger.self, from: JSONEncoder().encode(l))
         XCTAssertEqual(back, l)
     }

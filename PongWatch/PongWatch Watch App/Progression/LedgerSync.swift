@@ -5,8 +5,10 @@ import Foundation
 protocol LedgerCloudStore {
     func loadLedger() -> PointsLedger?
     func save(_ ledger: PointsLedger)
-    /// Calls back whenever another device changes the stored ledger.
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void)
+    /// Calls back whenever the stored ledger changes externally. `accountChanged`
+    /// means the whole store was swapped for another iCloud account's, not that
+    /// another device of this player wrote to it.
+    func startWatching(_ onRemoteChange: @escaping (_ remote: PointsLedger, _ accountChanged: Bool) -> Void)
 }
 
 /// iCloud key-value storage. With no iCloud account the store simply keeps
@@ -27,12 +29,14 @@ final class CloudKitValueStore: LedgerCloudStore {
         kvs.set(data, forKey: Self.key)
     }
 
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) {
+    func startWatching(_ onRemoteChange: @escaping (_ remote: PointsLedger, _ accountChanged: Bool) -> Void) {
         observer = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: kvs, queue: .main
-        ) { [weak self] _ in
-            if let ledger = self?.loadLedger() { onRemoteChange(ledger) }
+        ) { [weak self] note in
+            let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
+            let accountChanged = reason == NSUbiquitousKeyValueStoreAccountChange
+            if let ledger = self?.loadLedger() { onRemoteChange(ledger, accountChanged) }
         }
         kvs.synchronize()
     }
@@ -42,5 +46,5 @@ final class CloudKitValueStore: LedgerCloudStore {
 final class NoCloudStore: LedgerCloudStore {
     func loadLedger() -> PointsLedger? { nil }
     func save(_ ledger: PointsLedger) {}
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) {}
+    func startWatching(_ onRemoteChange: @escaping (_ remote: PointsLedger, _ accountChanged: Bool) -> Void) {}
 }

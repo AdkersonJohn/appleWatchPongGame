@@ -62,15 +62,16 @@ struct UnlocksView: View {
             }
         }
         .id(revision)
+        .onAppear { purchases.refreshRelocked() }
         .onChange(of: purchases.walletChanges) { _ in revision += 1 }
     }
 
-    /// A refund can take back a collectible; say so rather than let it vanish.
+    /// A refund or a sync can take back a collectible; say so rather than let it vanish.
     @ViewBuilder
     private var relockedNotice: some View {
         if !purchases.relocked.isEmpty {
             VStack(spacing: 4) {
-                Text("A refund re-locked \(purchases.relocked.map(\.name).joined(separator: ", ")).")
+                Text("Re-locked \(purchases.relocked.map(\.name).joined(separator: ", ")).")
                     .font(.caption2)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
