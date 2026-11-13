@@ -7,12 +7,15 @@ private final class FakeCloudStore: LedgerCloudStore {
     var stored: PointsLedger?
     var saves: [PointsLedger] = []
     private var handler: ((PointsLedger) -> Void)?
+    /// iCloud signed out or switched off: saves vanish, nothing is returned or announced.
+    var isOff = false
 
-    func loadLedger() -> PointsLedger? { stored }
-    func save(_ ledger: PointsLedger) { stored = ledger; saves.append(ledger) }
+    func loadLedger() -> PointsLedger? { isOff ? nil : stored }
+    func save(_ ledger: PointsLedger) { guard !isOff else { return }; stored = ledger; saves.append(ledger) }
     func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) { handler = onRemoteChange }
 
     func otherDeviceWrites(_ ledger: PointsLedger) {
+        guard !isOff else { return }
         stored = ledger
         handler?(ledger)
     }
@@ -107,15 +110,47 @@ final class LedgerSyncTests: XCTestCase {
         XCTAssertEqual(s.lifetimePoints, 100)
     }
 
-    /// iCloud turned off mid-session looks like a cloud that stops answering.
-    func test_aCloudThatGoesQuietMidSessionNeverBlocksPlay() {
+    /// iCloud turned off mid-session, then back on.
+    func test_playContinuesWhileICloudIsOffAndReconcilesWhenItReturns() {
         let cloud = FakeCloudStore()
         let s = ProgressionStore(defaults: defaults, cloud: cloud)
         s.award(100)
-        cloud.stored = nil
+        cloud.isOff = true
+
         s.award(60)
         XCTAssertTrue(s.buy(cheap))
         XCTAssertEqual(s.availablePoints, 160 - cheap.cost)
+        XCTAssertEqual(cloud.stored?.balance, 100, "nothing reached the cloud while it was off")
+
+        cloud.isOff = false
+        cloud.otherDeviceWrites(ledger(earned: ["phone-elsewhere": 50]))
+        XCTAssertEqual(s.availablePoints, 160 + 50 - cheap.cost)
+        XCTAssertEqual(cloud.stored?.balance, 160 + 50 - cheap.cost, "the offline spending reached the cloud")
+        XCTAssertNotNil(cloud.stored?.owned[cheap.id])
+    }
+
+    /// A wallet that existed before iCloud must reach the cloud at launch, so a
+    /// second device installed meanwhile sees it.
+    func test_aLocalWalletIsPushedAtLaunchWhenTheCloudIsEmpty() {
+        let cloud = FakeCloudStore()
+        ProgressionStore(defaults: defaults, cloud: NoCloudStore()).award(80)
+        _ = ProgressionStore(defaults: defaults, cloud: cloud)
+        XCTAssertEqual(cloud.stored?.balance, 80)
+    }
+
+    /// Upgrading from 1.1 with another device's wallet already in the cloud:
+    /// the migrated local ledger must merge with it, never replace it.
+    func test_migratingLegacyKeysNeverOverwritesALedgerAlreadyInTheCloud() {
+        let cloud = FakeCloudStore()
+        cloud.stored = ledger(earned: ["phone-elsewhere": 340])
+        defaults.set(77, forKey: "progress.availablePoints")
+        defaults.set(77, forKey: "progress.lifetimePoints")
+
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+
+        XCTAssertEqual(s.availablePoints, 417)
+        XCTAssertEqual(cloud.saves.count, 1, "one push, of the merged wallet")
+        XCTAssertEqual(cloud.stored?.balance, 417)
     }
 
     /// Review Focus 4

@@ -19,36 +19,39 @@ final class ProgressionStore {
     private let defaults: UserDefaults
     private let cloud: LedgerCloudStore
 
-    /// Only the app's real defaults sync by default; an isolated suite (tests,
-    /// previews) stays local so it can't write into the player's iCloud wallet.
+    /// Tests default to local-only so nothing under test reaches the player's
+    /// real iCloud wallet; the app gets the real store.
     init(defaults: UserDefaults = .standard, cloud: LedgerCloudStore? = nil) {
         self.defaults = defaults
-        self.cloud = cloud ?? (defaults === UserDefaults.standard ? CloudKitValueStore() : NoCloudStore())
+        self.cloud = cloud ?? (NSClassFromString("XCTestCase") == nil ? CloudKitValueStore() : NoCloudStore())
+        let remote = self.cloud.loadLedger()
         if let data = defaults.data(forKey: Key.ledger) {
             // Keep what we can't read: the next write would otherwise replace it.
             if (try? JSONDecoder().decode(PointsLedger.self, from: data)) == nil {
                 defaults.set(data, forKey: Key.unreadableLedger)
             }
-        } else {
-            migrateLegacyKeys()
+        } else if let migrated = legacyLedger() {
+            // Local only: pushing before the remote is merged would overwrite it.
+            persist(migrated)
         }
-        mergeRemote(self.cloud.loadLedger())
-        self.cloud.startWatching { [weak self] in self?.mergeRemote($0) }
+        reconcile(with: remote)
+        self.cloud.startWatching { [weak self] in self?.reconcile(with: $0) }
     }
 
-    /// Folds another device's ledger into ours. Writes only when that changes
-    /// something, so two devices can't keep echoing the same value at each other.
-    private func mergeRemote(_ remote: PointsLedger?) {
-        guard let remote else { return }
+    /// Merges another device's ledger with ours, then brings both copies up to
+    /// the result. Each side is written only if it changed, so two devices
+    /// can't keep echoing the same value at each other.
+    private func reconcile(with remote: PointsLedger?) {
         let local = ledger
-        let merged = PointsLedger.merge(local, remote)
-        if merged != local { ledger = merged }
+        let merged = PointsLedger.merge(local, remote ?? PointsLedger())
+        if merged != local { persist(merged) }
+        if merged != (remote ?? PointsLedger()) { cloud.save(merged) }
     }
 
     /// Builds the ledger from the 1.1 keys so nobody's balance changes on upgrade.
-    private func migrateLegacyKeys() {
+    private func legacyLedger() -> PointsLedger? {
         let keys = [Key.legacyAvailable, Key.legacyLifetime, Key.legacyUnlocked]
-        guard keys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
+        guard keys.contains(where: { defaults.object(forKey: $0) != nil }) else { return nil }
         var l = PointsLedger()
         l.earned[PointsLedger.deviceKind] = defaults.integer(forKey: Key.legacyLifetime)
         for id in defaults.stringArray(forKey: Key.legacyUnlocked) ?? [] {
@@ -58,7 +61,7 @@ final class ProgressionStore {
         // The balance the player last saw wins. If lifetime disagrees (a price
         // changed, or the data was inconsistent), restate earned in either direction.
         l.earned[PointsLedger.deviceKind, default: 0] += defaults.integer(forKey: Key.legacyAvailable) - l.balance
-        ledger = l
+        return l
     }
 
     // MARK: - Points
@@ -71,12 +74,15 @@ final class ProgressionStore {
             defaults.data(forKey: Key.ledger)
                 .flatMap { try? JSONDecoder().decode(PointsLedger.self, from: $0) } ?? PointsLedger()
         }
-        // A failed encode must not reach `set`: nil would delete the wallet.
-        set {
-            guard let data = try? JSONEncoder().encode(newValue) else { return }
-            defaults.set(data, forKey: Key.ledger)
-            cloud.save(newValue)
-        }
+        set { if persist(newValue) { cloud.save(newValue) } }
+    }
+
+    /// False, writing nothing, when encoding fails: nil would delete the wallet.
+    @discardableResult
+    private func persist(_ l: PointsLedger) -> Bool {
+        guard let data = try? JSONEncoder().encode(l) else { return false }
+        defaults.set(data, forKey: Key.ledger)
+        return true
     }
 
     var availablePoints: Int { ledger.balance }
