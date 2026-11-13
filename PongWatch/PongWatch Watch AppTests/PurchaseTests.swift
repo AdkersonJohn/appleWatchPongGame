@@ -88,4 +88,106 @@ final class PurchaseTests: XCTestCase {
     func test_aNonPositiveQuantityCreditsNothing() {
         XCTAssertNil(PointPack.pointsToCredit(productID: PointPack.custom.id, quantity: 0, isRevoked: false))
     }
+
+    // MARK: - Refunds
+
+    private func item(_ id: String) -> Unlockable { UnlockCatalog.item(id: id)! }
+
+    func test_aRefundRemovesUnspentPointsAndLeavesItemsAlone() {
+        let s = makeStore()
+        s.recordPurchase(points: 500, transactionID: "tx-1")
+        XCTAssertEqual(s.revoke(points: 500, transactionID: "tx-1"), [])
+        XCTAssertEqual(s.availablePoints, 0)
+    }
+
+    func test_aRefundRelocksTheNewestItemsUntilTheBalanceIsWholeAgain() {
+        let s = makeStore()
+        s.award(60)
+        s.recordPurchase(points: 500, transactionID: "tx-1")
+        XCTAssertTrue(s.buy(item("celebration.explosion")))   // 40
+        XCTAssertTrue(s.buy(item("celebration.rainbow")))     // 300
+        XCTAssertEqual(s.availablePoints, 220)
+
+        let relocked = s.revoke(points: 500, transactionID: "tx-1")
+
+        XCTAssertEqual(relocked.map(\.id), ["celebration.rainbow"])
+        XCTAssertFalse(s.isUnlocked(item("celebration.rainbow")))
+        XCTAssertTrue(s.isUnlocked(item("celebration.explosion")))
+        XCTAssertEqual(s.availablePoints, 20, "60 earned + 500 bought - 500 refunded - 40 still spent")
+    }
+
+    /// Review Focus 5
+    func test_aRefundNeverRelocksAFreeItemAndNeverLeavesTheBalanceNegative() {
+        let s = makeStore()
+        s.award(20)
+        s.recordPurchase(points: 100, transactionID: "tx-1")
+        XCTAssertTrue(s.buy(item("celebration.explosion")))
+        XCTAssertTrue(s.buy(item("paddle.sky")))
+
+        let relocked = s.revoke(points: 100_000, transactionID: "tx-1")
+
+        XCTAssertEqual(Set(relocked.map(\.id)), ["celebration.explosion", "paddle.sky"])
+        XCTAssertGreaterThanOrEqual(s.availablePoints, 0)
+        XCTAssertTrue(relocked.allSatisfy { $0.cost > 0 })
+        for category in UnlockCategory.allCases where category != .ability {
+            XCTAssertNotNil(s.equippedItem(in: category), "\(category) must keep something equipped")
+        }
+        XCTAssertTrue(s.isUnlocked(item("celebration.sparks")))
+    }
+
+    func test_anItemRelockedWhileEquippedFallsBackToTheCategorysFreeItem() {
+        let s = makeStore()
+        s.recordPurchase(points: 40, transactionID: "tx-1")
+        let explosion = item("celebration.explosion")
+        XCTAssertTrue(s.buy(explosion))
+        s.equip(explosion)
+        XCTAssertEqual(s.equippedItem(in: .celebration)?.id, explosion.id)
+
+        s.revoke(points: 40, transactionID: "tx-1")
+
+        XCTAssertEqual(s.equippedItem(in: .celebration)?.cost, 0)
+    }
+
+    func test_theSameRefundIsNeverAppliedTwice() {
+        let s = makeStore()
+        s.award(100)
+        s.recordPurchase(points: 50, transactionID: "tx-1")
+        s.revoke(points: 50, transactionID: "tx-1")
+        XCTAssertEqual(s.revoke(points: 50, transactionID: "tx-1"), [])
+        XCTAssertEqual(s.availablePoints, 100)
+        XCTAssertEqual(makeStore().availablePoints, 100, "and it was saved")
+    }
+
+    func test_aRefundDoesNotChangeTheEarnedTotal() {
+        let s = makeStore()
+        s.award(30)
+        s.recordPurchase(points: 50, transactionID: "tx-1")
+        s.revoke(points: 50, transactionID: "tx-1")
+        XCTAssertEqual(s.lifetimePoints, 30)
+    }
+
+    /// A revocation carries the purchase's own id, so it must not be mistaken for a replay.
+    func test_aRefundIsNotBlockedByTheCreditOfTheSameTransaction() {
+        let s = makeStore()
+        s.recordPurchase(points: 50, transactionID: "tx-1")
+        s.revoke(points: 50, transactionID: "tx-1")
+        XCTAssertEqual(s.availablePoints, 0)
+    }
+
+    func test_aRefundIsPushedToTheCloudLikeAnyOtherChange() {
+        let cloud = RecordingCloud()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        s.recordPurchase(points: 50, transactionID: "tx-1")
+        let before = cloud.saved.count
+        s.revoke(points: 50, transactionID: "tx-1")
+        XCTAssertEqual(cloud.saved.count, before + 1)
+        XCTAssertEqual(cloud.saved.last?.balance, 0)
+    }
+}
+
+private final class RecordingCloud: LedgerCloudStore {
+    private(set) var saved: [PointsLedger] = []
+    func loadLedger() -> PointsLedger? { nil }
+    func save(_ ledger: PointsLedger) { saved.append(ledger) }
+    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) {}
 }

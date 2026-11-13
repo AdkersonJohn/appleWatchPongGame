@@ -68,11 +68,17 @@ final class PurchaseService: ObservableObject {
     /// between, StoreKit replays the transaction and the id check stops a double credit.
     private func credit(_ verification: VerificationResult<Transaction>) async throws -> Bool {
         guard case .verified(let transaction) = verification else { throw PurchaseError.unverified }
-        // Refunds are Task 5; a revoked transaction must never add points.
         guard let points = PointPack.pointsToCredit(productID: transaction.productID,
                                                     quantity: transaction.purchasedQuantity,
-                                                    isRevoked: transaction.revocationDate != nil) else { return false }
-        let credited = store.recordPurchase(points: points, transactionID: String(transaction.id))
+                                                    isRevoked: false) else { return false }
+        let id = String(transaction.id)
+        var credited = false
+        if transaction.revocationDate == nil {
+            credited = store.recordPurchase(points: points, transactionID: id)
+        } else {
+            // A refund reverses the whole purchase, even points already spent.
+            store.revoke(points: points, transactionID: id)
+        }
         await transaction.finish()
         return credited
     }

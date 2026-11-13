@@ -121,6 +121,27 @@ final class ProgressionStore {
         return true
     }
 
+    /// Reverses a refunded purchase. Guards on `revokedTransactions`, not the credited
+    /// set: a revocation carries the purchase's own id. Re-locks owned items
+    /// newest-first until the balance is whole, returning them so the player can be told.
+    @discardableResult
+    func revoke(points: Int, transactionID: String) -> [Unlockable] {
+        var l = ledger
+        guard points > 0, l.revokedTransactions.insert(transactionID).inserted else { return [] }
+        // Never refund more than was ever granted: past that, no re-locking could make the balance whole.
+        let granted = l.earned.values.reduce(0, +) + l.purchased.values.reduce(0, +) - l.refunded.values.reduce(0, +)
+        l.refunded[PointsLedger.deviceKind, default: 0] += min(points, granted)
+        var relocked: [Unlockable] = []
+        let newestFirst = l.owned.filter { $0.value.costPaid > 0 }
+            .sorted { ($0.value.boughtAt, $0.key) > ($1.value.boughtAt, $1.key) }
+        for (id, _) in newestFirst where l.balance < 0 {
+            l.owned[id] = nil
+            if let item = UnlockCatalog.item(id: id) { relocked.append(item) }
+        }
+        ledger = l
+        return relocked
+    }
+
     // MARK: - Unlocks
 
     func isUnlocked(_ item: Unlockable) -> Bool {
