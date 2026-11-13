@@ -198,7 +198,7 @@ final class PurchaseTests: XCTestCase {
         let stale = ledger(owning: "celebration.explosion", boughtAt: t)
         var refunded = stale
         refunded.owned = [:]
-        refunded.refunded["watch"] = 40
+        refunded.refundedByTx["tx-1"] = 40; refunded.creditedTransactions = ["tx-1"]
         refunded.relocked = [Tombstone(itemID: "celebration.explosion", boughtAt: t)]
 
         let merged = PointsLedger.merge(refunded, stale)
@@ -237,11 +237,87 @@ final class PurchaseTests: XCTestCase {
         s2.revoke(points: 40, transactionID: "tx-1")
         XCTAssertEqual(cloud.saved.last?.relocked.map(\.itemID), ["celebration.explosion"])
     }
+
+    // MARK: - Refunds and credits that arrive out of order, or on two devices
+
+    func test_aRefundForATransactionThatWasNeverCreditedChangesNothing() {
+        let s = makeStore()
+        s.award(100)
+        XCTAssertTrue(s.buy(item("celebration.explosion")))
+
+        XCTAssertEqual(s.revoke(points: 500, transactionID: "tx-9"), [])
+
+        XCTAssertEqual(s.availablePoints, 60)
+        XCTAssertTrue(s.isUnlocked(item("celebration.explosion")))
+    }
+
+    func test_thatRefundStartsCountingAndRelocksWhenTheCreditArrivesByMerge() {
+        let cloud = RecordingCloud()
+        let s = ProgressionStore(defaults: defaults, cloud: cloud)
+        s.revoke(points: 500, transactionID: "tx-9")   // the refund beats the credit here
+
+        var other = PointsLedger()
+        other.earned["other"] = 60
+        other.purchasedByTx["tx-9"] = 500
+        other.creditedTransactions = ["tx-9"]
+        other.owned["celebration.explosion"] = OwnedItem(costPaid: 40, boughtAt: Date(timeIntervalSince1970: 1000))
+        other.owned["celebration.rainbow"] = OwnedItem(costPaid: 300, boughtAt: Date(timeIntervalSince1970: 2000))
+        cloud.deliver(other)
+
+        XCTAssertFalse(s.isUnlocked(item("celebration.rainbow")))
+        XCTAssertTrue(s.isUnlocked(item("celebration.explosion")))
+        XCTAssertEqual(s.availablePoints, 20)
+        XCTAssertEqual(cloud.saved.last?.relocked.map(\.itemID), ["celebration.rainbow"], "and the re-lock was pushed")
+    }
+
+    func test_twoDevicesThatBothProcessTheSameRevocationRefundTheOnePurchaseOnce() {
+        var a = PointsLedger()
+        a.earned["watch"] = 100
+        a.purchasedByTx["tx-1"] = 500
+        a.creditedTransactions = ["tx-1"]
+        var b = a
+        a.refundedByTx["tx-1"] = 500; a.revokedTransactions = ["tx-1"]
+        b.refundedByTx["tx-1"] = 500; b.revokedTransactions = ["tx-1"]
+
+        XCTAssertEqual(PointsLedger.merge(a, b).balance, 100)
+        XCTAssertEqual(PointsLedger.merge(b, a), PointsLedger.merge(a, b))
+    }
+
+    func test_twoDevicesThatBothCreditTheSameTransactionCreditThePlayerOnce() {
+        let otherSuite = "PurchaseTests-\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: otherSuite)?.removePersistentDomain(forName: otherSuite) }
+        let watchCloud = RecordingCloud(), phoneCloud = RecordingCloud()
+        let watch = ProgressionStore(defaults: defaults, cloud: watchCloud)
+        let phone = ProgressionStore(defaults: UserDefaults(suiteName: otherSuite)!, cloud: phoneCloud)
+        watch.recordPurchase(points: 100, transactionID: "tx-1")
+        phone.recordPurchase(points: 100, transactionID: "tx-1")
+
+        let merged = PointsLedger.merge(watchCloud.saved.last!, phoneCloud.saved.last!)
+
+        XCTAssertEqual(merged.balance, 100)
+    }
+
+    func test_settleIsIdempotentOverANegativeBalance() {
+        var l = PointsLedger()
+        l.earned["watch"] = 100
+        l.owned["paddle.sky"] = OwnedItem(costPaid: 60, boughtAt: Date(timeIntervalSince1970: 1000))
+        l.owned["paddle.gold"] = OwnedItem(costPaid: 60, boughtAt: Date(timeIntervalSince1970: 2000))
+        XCTAssertEqual(l.balance, -20)
+
+        XCTAssertEqual(l.settle(), ["paddle.gold"])
+        let once = l
+        XCTAssertEqual(l.settle(), [])
+        XCTAssertEqual(l, once)
+        XCTAssertEqual(l.balance, 40)
+    }
 }
 
 private final class RecordingCloud: LedgerCloudStore {
     private(set) var saved: [PointsLedger] = []
     func loadLedger() -> PointsLedger? { nil }
     func save(_ ledger: PointsLedger) { saved.append(ledger) }
-    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) {}
+    private var onRemote: ((PointsLedger) -> Void)?
+    func startWatching(_ onRemoteChange: @escaping (PointsLedger) -> Void) { onRemote = onRemoteChange }
+    /// Another device's ledger arriving.
+    func deliver(_ ledger: PointsLedger) { onRemote?(ledger) }
 }

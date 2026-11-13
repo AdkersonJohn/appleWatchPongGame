@@ -5,8 +5,9 @@ final class PointsLedgerTests: XCTestCase {
     func test_balanceIsEarnedPlusPurchasedMinusRefundedMinusSpent() {
         var l = PointsLedger()
         l.earned = ["watch": 100, "phone": 40]
-        l.purchased = ["phone": 500]
-        l.refunded = ["phone": 50]
+        l.purchasedByTx = ["t1": 500]
+        l.refundedByTx = ["t1": 50]
+        l.creditedTransactions = ["t1"]
         l.owned = ["a": OwnedItem(costPaid: 90, boughtAt: .distantPast)]
         XCTAssertEqual(l.balance, 500)
         XCTAssertEqual(l.lifetimeEarned, 140, "purchased points are not earned")
@@ -32,9 +33,9 @@ final class PointsLedgerTests: XCTestCase {
     }
 
     func test_mergeIsOrderIndependent() {
-        var a = PointsLedger(); a.earned = ["watch": 5]; a.purchased = ["phone": 9]
+        var a = PointsLedger(); a.earned = ["watch": 5]; a.purchasedByTx = ["t1": 9]
         a.creditedTransactions = ["t1"]; a.revokedTransactions = ["r1"]
-        var b = PointsLedger(); b.earned = ["watch": 8, "phone": 2]; b.refunded = ["phone": 1]
+        var b = PointsLedger(); b.earned = ["watch": 8, "phone": 2]; b.refundedByTx = ["t2": 1]
         b.creditedTransactions = ["t2"]
         XCTAssertEqual(PointsLedger.merge(a, b), PointsLedger.merge(b, a))
     }
@@ -108,7 +109,7 @@ final class PointsLedgerTests: XCTestCase {
 
     func test_ledgerSurvivesAJSONRoundTrip() throws {
         var l = PointsLedger()
-        l.earned = ["watch": 3]; l.purchased = ["phone": 500]; l.refunded = ["phone": 1]
+        l.earned = ["watch": 3]; l.purchasedByTx = ["t1": 500]; l.refundedByTx = ["t1": 1]
         l.owned = ["x": OwnedItem(costPaid: 40, boughtAt: Date(timeIntervalSince1970: 1_700_000_000))]
         l.creditedTransactions = ["t1", "t2"]; l.revokedTransactions = ["t1"]
         let back = try JSONDecoder().decode(PointsLedger.self, from: JSONEncoder().encode(l))

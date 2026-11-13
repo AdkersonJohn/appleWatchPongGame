@@ -45,7 +45,8 @@ final class ProgressionStore {
     /// can't keep echoing the same value at each other.
     private func reconcile(with remote: PointsLedger?) {
         let local = ledger
-        let merged = PointsLedger.merge(local, remote ?? PointsLedger())
+        var merged = PointsLedger.merge(local, remote ?? PointsLedger())
+        merged.settle()
         if merged != local { persist(merged) }
         if merged != (remote ?? PointsLedger()) { cloud.save(merged) }
     }
@@ -116,31 +117,23 @@ final class ProgressionStore {
     func recordPurchase(points: Int, transactionID: String) -> Bool {
         var l = ledger
         guard points > 0, l.creditedTransactions.insert(transactionID).inserted else { return false }
-        l.purchased[PointsLedger.deviceKind, default: 0] += points
+        l.purchasedByTx[transactionID] = points
+        l.settle()
         ledger = l
         return true
     }
 
-    /// Reverses a refunded purchase. Guards on `revokedTransactions`, not the credited
-    /// set: a revocation carries the purchase's own id. Re-locks owned items
-    /// newest-first until the balance is whole, returning them so the player can be told.
+    /// Records a refund. Guards on `revokedTransactions`, not the credited set: a
+    /// revocation carries the purchase's own id. Returns the items re-locked now, so
+    /// the player can be told; a refund that can't count yet re-locks later, in `settle()`.
     @discardableResult
     func revoke(points: Int, transactionID: String) -> [Unlockable] {
         var l = ledger
         guard points > 0, l.revokedTransactions.insert(transactionID).inserted else { return [] }
-        // Never refund more than was ever granted: past that, no re-locking could make the balance whole.
-        let granted = l.earned.values.reduce(0, +) + l.purchased.values.reduce(0, +) - l.refunded.values.reduce(0, +)
-        l.refunded[PointsLedger.deviceKind, default: 0] += min(points, granted)
-        var relocked: [Unlockable] = []
-        let newestFirst = l.owned.filter { $0.value.costPaid > 0 }
-            .sorted { ($0.value.boughtAt, $0.key) > ($1.value.boughtAt, $1.key) }
-        for (id, owned) in newestFirst where l.balance < 0 {
-            l.owned[id] = nil
-            l.relocked.insert(Tombstone(itemID: id, boughtAt: owned.boughtAt))
-            if let item = UnlockCatalog.item(id: id) { relocked.append(item) }
-        }
+        l.refundedByTx[transactionID] = points
+        let relocked = l.settle()
         ledger = l
-        return relocked
+        return relocked.compactMap(UnlockCatalog.item(id:))
     }
 
     // MARK: - Unlocks

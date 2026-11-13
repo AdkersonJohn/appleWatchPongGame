@@ -23,8 +23,12 @@ struct EquippedChoice: Codable, Equatable {
 /// install, so merging is a per-key max.
 struct PointsLedger: Codable, Equatable {
     var earned: [String: Int] = [:]
-    var purchased: [String: Int] = [:]
-    var refunded: [String: Int] = [:]
+    /// Keyed by StoreKit transaction id, not device kind: every device signed into
+    /// the Apple ID is handed the same transaction, and per-device counters would
+    /// sum its points once per device.
+    var purchasedByTx: [String: Int] = [:]
+    /// Same keying, so two devices processing one revocation refund it once.
+    var refundedByTx: [String: Int] = [:]
     var owned: [String: OwnedItem] = [:]
     /// The one field that isn't grow-only: keyed by `UnlockCategory.rawValue`,
     /// and merged by the later `changedAt`.
@@ -45,9 +49,33 @@ struct PointsLedger: Codable, Equatable {
         #endif
     }()
 
+    private var granted: Int { earned.values.reduce(0, +) + purchasedByTx.values.reduce(0, +) }
+
+    /// A refund counts only once its purchase's credit is known, so one that
+    /// arrives early waits instead of eating points the player earned. Capped at
+    /// everything granted: past that, re-locking could never make the balance whole.
+    private var countedRefunds: Int {
+        min(refundedByTx.filter { creditedTransactions.contains($0.key) }.values.reduce(0, +), granted)
+    }
+
     var balance: Int {
-        earned.values.reduce(0, +) + purchased.values.reduce(0, +)
-            - refunded.values.reduce(0, +) - owned.values.reduce(0) { $0 + $1.costPaid }
+        granted - countedRefunds - owned.values.reduce(0) { $0 + $1.costPaid }
+    }
+
+    /// Re-locks paid items, newest first, while the balance is negative, and
+    /// returns their ids. Does nothing when the balance is whole, so it is safe to run
+    /// after every change.
+    @discardableResult
+    mutating func settle() -> [String] {
+        var relockedIDs: [String] = []
+        let newestFirst = owned.filter { $0.value.costPaid > 0 }
+            .sorted { ($0.value.boughtAt, $0.key) > ($1.value.boughtAt, $1.key) }
+        for (id, item) in newestFirst where balance < 0 {
+            owned[id] = nil
+            relocked.insert(Tombstone(itemID: id, boughtAt: item.boughtAt))
+            relockedIDs.append(id)
+        }
+        return relockedIDs
     }
 
     var lifetimeEarned: Int { earned.values.reduce(0, +) }
@@ -55,8 +83,8 @@ struct PointsLedger: Codable, Equatable {
     static func merge(_ a: PointsLedger, _ b: PointsLedger) -> PointsLedger {
         var m = PointsLedger()
         m.earned = a.earned.merging(b.earned, uniquingKeysWith: max)
-        m.purchased = a.purchased.merging(b.purchased, uniquingKeysWith: max)
-        m.refunded = a.refunded.merging(b.refunded, uniquingKeysWith: max)
+        m.purchasedByTx = a.purchasedByTx.merging(b.purchasedByTx, uniquingKeysWith: max)
+        m.refundedByTx = a.refundedByTx.merging(b.refundedByTx, uniquingKeysWith: max)
         m.relocked = a.relocked.union(b.relocked)
         // Drop tombstoned entries before merging: the merge keeps the earlier boughtAt,
         // which would otherwise let a stale copy shadow a later re-purchase.
@@ -78,8 +106,8 @@ extension PointsLedger {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         earned = try c.decodeIfPresent([String: Int].self, forKey: .earned) ?? [:]
-        purchased = try c.decodeIfPresent([String: Int].self, forKey: .purchased) ?? [:]
-        refunded = try c.decodeIfPresent([String: Int].self, forKey: .refunded) ?? [:]
+        purchasedByTx = try c.decodeIfPresent([String: Int].self, forKey: .purchasedByTx) ?? [:]
+        refundedByTx = try c.decodeIfPresent([String: Int].self, forKey: .refundedByTx) ?? [:]
         owned = try c.decodeIfPresent([String: OwnedItem].self, forKey: .owned) ?? [:]
         equipped = try c.decodeIfPresent([String: EquippedChoice].self, forKey: .equipped) ?? [:]
         creditedTransactions = try c.decodeIfPresent(Set<String>.self, forKey: .creditedTransactions) ?? []
