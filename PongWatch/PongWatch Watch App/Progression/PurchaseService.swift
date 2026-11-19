@@ -62,8 +62,11 @@ final class PurchaseService: ObservableObject {
         }
     }
 
-    /// Units per transaction. Believed to be Apple's limit but UNCONFIRMED; Task 7
-    /// checks it against real sandbox products (at the bound and one above).
+    /// Units per transaction. Confirmed on device 2026-11-19: a quantity-10
+    /// purchase of the 10-point pack went through in the TestFlight sandbox.
+    /// If Apple ever lowers this, register more pack products rather than
+    /// shrinking the stepper — the design treats the ceiling as a catalog
+    /// problem, not a feature limit.
     static let maxQuantity = 10
 
     func refreshRelocked() { relocked = store.pendingRelockNotice }
