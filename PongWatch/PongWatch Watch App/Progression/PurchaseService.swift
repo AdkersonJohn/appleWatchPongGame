@@ -41,8 +41,22 @@ final class PurchaseService: ObservableObject {
 
     deinit { updatesTask?.cancel() }
 
+    /// StoreKit can hang here indefinitely — no sandbox account, no network, or a
+    /// product that isn't ready yet. Without a bound the screen shows a spinner
+    /// forever and the player can never reach the retry. Seen on device, Task 7.
+    static let loadTimeout: Duration = .seconds(15)
+
     func load() async {
-        guard let products = try? await Product.products(for: PointPack.all.map(\.id)) else { return }
+        let fetch = Task { try await Product.products(for: PointPack.all.map(\.id)) }
+        let timeout = Task {
+            try await Task.sleep(for: Self.loadTimeout)
+            fetch.cancel()
+        }
+        defer { timeout.cancel() }
+        guard let products = try? await fetch.value else {
+            packs = []
+            return
+        }
         packs = PointPack.all.compactMap { pack in
             products.first { $0.id == pack.id }.map { (pack, $0) }
         }
