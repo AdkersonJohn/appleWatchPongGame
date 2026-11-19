@@ -1,0 +1,13 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    { "displayPrice" : "0.99", "familyShareable" : false, "internalID" : "P10", "localizations" : [ { "description" : "10 points", "displayName" : "10 Points", "locale" : "en_US" } ], "productID" : "com.johnadkerson.PongWatch.points10", "referenceName" : "10 Points", "type" : "Consumable" },
+    { "displayPrice" : "3.99", "familyShareable" : false, "internalID" : "P50", "localizations" : [ { "description" : "50 points", "displayName" : "50 Points", "locale" : "en_US" } ], "productID" : "com.johnadkerson.PongWatch.points50", "referenceName" : "50 Points", "type" : "Consumable" },
+    { "displayPrice" : "6.99", "familyShareable" : false, "internalID" : "P100", "localizations" : [ { "description" : "100 points", "displayName" : "100 Points", "locale" : "en_US" } ], "productID" : "com.johnadkerson.PongWatch.points100", "referenceName" : "100 Points", "type" : "Consumable" },
+    { "displayPrice" : "19.99", "familyShareable" : false, "internalID" : "P500", "localizations" : [ { "description" : "500 points", "displayName" : "500 Points", "locale" : "en_US" } ], "productID" : "com.johnadkerson.PongWatch.points500", "referenceName" : "500 Points", "type" : "Consumable" }
+  ],
+  "settings" : {},
+  "subscriptionGroups" : [],
+  "version" : { "major" : 3, "minor" : 0 }
+}

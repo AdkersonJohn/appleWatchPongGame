@@ -14,15 +14,37 @@ struct UnlocksView: View {
     /// Bumped on every purchase so the list redraws; the store is plain
     /// UserDefaults rather than an observable object.
     @State private var revision = 0
+    @EnvironmentObject private var purchases: PurchaseService
+    @State private var showingStore = false
+    @State private var chasing: Unlockable?
 
     var body: some View {
+        if showingStore {
+            GetPointsView(chasing: chasing) {
+                showingStore = false
+                revision += 1
+            }
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 8) {
-                    Text("\(store.availablePoints) pts")
-                        .font(.title3).bold()
-                        .foregroundColor(.yellow)
+                    relockedNotice
+                    Button {
+                        chasing = nil
+                        showingStore = true
+                    } label: {
+                        Text("\(store.availablePoints) pts +")
+                            .font(.title3).bold()
+                            .foregroundColor(.yellow)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
                     Text("Earned \(store.lifetimePoints) all-time")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
@@ -40,6 +62,27 @@ struct UnlocksView: View {
             }
         }
         .id(revision)
+        .onAppear { purchases.refreshRelocked() }
+        .onChange(of: purchases.walletChanges) { _ in revision += 1 }
+    }
+
+    /// A refund or a sync can take back a collectible; say so rather than let it vanish.
+    @ViewBuilder
+    private var relockedNotice: some View {
+        if !purchases.relocked.isEmpty {
+            VStack(spacing: 4) {
+                Text("Re-locked \(purchases.relocked.map(\.name).joined(separator: ", ")).")
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                Button("OK") { purchases.dismissRelocked() }
+                    .font(.caption2)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity)
+            .background(Color.red.opacity(0.3))
+            .cornerRadius(8)
+        }
     }
 
     @ViewBuilder
@@ -118,7 +161,14 @@ struct UnlocksView: View {
         let affordable = store.availablePoints >= item.cost
 
         Button {
-            if owned { store.equip(item) } else if store.buy(item) { store.equip(item) }
+            if owned {
+                store.equip(item)
+            } else if affordable {
+                if store.buy(item) { store.equip(item) }
+            } else {
+                chasing = item
+                showingStore = true
+            }
             revision += 1
         } label: {
             HStack(spacing: 6) {
@@ -161,10 +211,10 @@ struct UnlocksView: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(!owned && !affordable)
     }
 }
 
 #Preview {
     UnlocksView(onBack: {})
+        .environmentObject(PurchaseService(store: ProgressionStore()))
 }
