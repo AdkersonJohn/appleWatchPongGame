@@ -16,7 +16,8 @@ final class ProgressionStore {
         static let asidePrefix = "progress.ledger.account."
         /// Item ids a re-lock took, until the player taps OK on the notice.
         static let pendingRelockNotice = "progress.relockedNotice"
-        // 1.1 keys, read by the migration. Never written or deleted afterwards.
+        // 1.1 keys, read by the migration. Never written afterwards, and deleted only
+        // (legacyEquipped) when the Apple ID changes.
         // Only `equipped` is useful to a downgrade: once progress.ledger exists, points
         // and unlocks earned on 1.1 are never read back from these keys.
         static let legacyAvailable = "progress.availablePoints"
@@ -60,11 +61,21 @@ final class ProgressionStore {
             // grow-only), and pushing the union would give us theirs. With an identity
             // token, set our wallet aside and adopt theirs. Without one we can't tell
             // what happened, so keep local and don't push.
-            if accountChanged {
-                guard self?.switchAccountIfChanged() == true else { return }
-            }
+            // The token is checked on every external change, whatever the stated reason.
+            let switched = self?.switchAccountIfChanged() == true
+            guard switched || !accountChanged else { return }
             self?.reconcile(with: remote)
         }
+    }
+
+    /// The one way to the cloud. Refuses while the signed-in account differs from the
+    /// one the local wallet was written under, so a save that lands before the change
+    /// is noticed can't put the old account's wallet into the new account's iCloud.
+    /// Non-mutating, so it is safe from the ledger setter.
+    private func push(_ l: PointsLedger) {
+        if let token = accountToken(), let stored = defaults.data(forKey: Key.accountToken),
+           let old = unarchived(stored), !old.isEqual(token) { return }
+        cloud.save(l)
     }
 
     private func archived(_ token: NSObject) -> Data? {
@@ -106,6 +117,9 @@ final class ProgressionStore {
             persist(PointsLedger())
         }
         clearRelockNotice()
+        // The old account's 1.1 choice would otherwise be re-seeded into this wallet
+        // and pushed to the new account's iCloud.
+        defaults.removeObject(forKey: Key.legacyEquipped)
         defaults.set(now, forKey: Key.accountToken)
         return true
     }
@@ -119,7 +133,7 @@ final class ProgressionStore {
         let relocked = merged.settle()
         if merged != local { persist(merged) }
         noteRelocked(relocked)
-        if merged != (remote ?? PointsLedger()) { cloud.save(merged) }
+        if merged != (remote ?? PointsLedger()) { push(merged) }
     }
 
     /// Items waiting to be announced, persisted so a refund that lands at launch
@@ -181,7 +195,7 @@ final class ProgressionStore {
             defaults.data(forKey: Key.ledger)
                 .flatMap { try? JSONDecoder().decode(PointsLedger.self, from: $0) } ?? PointsLedger()
         }
-        set { if persist(newValue) { cloud.save(newValue) } }
+        set { if persist(newValue) { push(newValue) } }
     }
 
     /// False, writing nothing, when encoding fails: nil would delete the wallet.
