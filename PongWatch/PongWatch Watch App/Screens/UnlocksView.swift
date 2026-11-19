@@ -104,26 +104,18 @@ struct UnlocksView: View {
                     Text(category.label)
                         .font(.caption).bold()
                         .foregroundColor(.white)
-                        // Shrink rather than wrap: the ready badge squeezed
-                        // "Paddles" onto two lines on a 40mm screen.
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                     Spacer(minLength: 4)
-                    // Closed sections have to advertise what's buyable inside,
-                    // or affording something means opening all five to find it.
-                    if ready > 0 {
-                        Text("\(ready) ready")
-                            .font(.system(size: 10, weight: .bold))
-                            .lineLimit(1)
-                            .fixedSize()
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.yellow)
-                            .cornerRadius(4)
-                    }
+                    // What's buyable inside a closed section is signalled by the
+                    // yellow outline and lighter fill below, not by a badge: a
+                    // "5 ready" pill cost so much width on a 40mm screen that the
+                    // category names truncated to "C...", "P...", "B...".
                     Text("\(store.ownedCount(in: category))/\(store.totalCount(in: category))")
                         .font(.caption2)
+                        .lineLimit(1)
+                        // Without this "1/10" wrapped to two lines.
+                        .fixedSize()
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .padding(.vertical, 6)
