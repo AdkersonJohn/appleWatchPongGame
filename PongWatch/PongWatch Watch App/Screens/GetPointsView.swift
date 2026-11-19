@@ -43,6 +43,10 @@ struct GetPointsView: View {
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.7))
                             .multilineTextAlignment(.center)
+                            // Centred text near the top runs under the display's
+                            // curved corners at the VStack's own inset. Seen on a
+                            // 40mm SE: "Sky costs 30 pts" lost its first letter.
+                            .padding(.horizontal, 12)
                     }
 
                     if availability == .nothingLeftToBuy {
@@ -50,6 +54,7 @@ struct GetPointsView: View {
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.7))
                             .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
                     }
 
                     if purchases.packs.isEmpty {

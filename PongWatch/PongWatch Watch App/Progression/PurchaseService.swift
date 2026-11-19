@@ -41,15 +41,32 @@ final class PurchaseService: ObservableObject {
 
     deinit { updatesTask?.cancel() }
 
+    /// StoreKit can hang here indefinitely — no sandbox account, no network, or a
+    /// product that isn't ready yet. Without a bound the screen shows a spinner
+    /// forever and the player can never reach the retry. Seen on device, Task 7.
+    static let loadTimeout: Duration = .seconds(15)
+
     func load() async {
-        guard let products = try? await Product.products(for: PointPack.all.map(\.id)) else { return }
+        let fetch = Task { try await Product.products(for: PointPack.all.map(\.id)) }
+        let timeout = Task {
+            try await Task.sleep(for: Self.loadTimeout)
+            fetch.cancel()
+        }
+        defer { timeout.cancel() }
+        guard let products = try? await fetch.value else {
+            packs = []
+            return
+        }
         packs = PointPack.all.compactMap { pack in
             products.first { $0.id == pack.id }.map { (pack, $0) }
         }
     }
 
-    /// Units per transaction. Believed to be Apple's limit but UNCONFIRMED; Task 7
-    /// checks it against real sandbox products (at the bound and one above).
+    /// Units per transaction. Confirmed on device 2026-11-19: a quantity-10
+    /// purchase of the 10-point pack went through in the TestFlight sandbox.
+    /// If Apple ever lowers this, register more pack products rather than
+    /// shrinking the stepper — the design treats the ceiling as a catalog
+    /// problem, not a feature limit.
     static let maxQuantity = 10
 
     func refreshRelocked() { relocked = store.pendingRelockNotice }
