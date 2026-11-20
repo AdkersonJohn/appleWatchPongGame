@@ -28,7 +28,20 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "08AD824BDBBBA66A07F6994D"
+               BuildableName = "PongWatchTests.xctest"
+               BlueprintName = "PongWatchTests"
+               ReferencedContainer = "container:PongWatch.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <StoreKitConfigurationFileReference
+         identifier = "../../../Points.storekit">
+      </StoreKitConfigurationFileReference>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
