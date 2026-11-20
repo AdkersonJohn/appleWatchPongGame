@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		1B4D99502F8E960000127598 /* PongWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 1B4D994F2F8E960000127598 /* PongWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DA2D5B83929C4F55B06E47CD /* RefundIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8F5D17DB467EF65CB93DD /* RefundIntegrationTests.swift */; };
+		DBE977E7A2CC7597D2E7007F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 916B88FFCCF8D556CCFE0C7B /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +34,13 @@
 			remoteGlobalIDString = 1B4D994E2F8E960000127598;
 			remoteInfo = "PongWatch Watch App";
 		};
+		B2666A8C8A2133AAF2DB5FEC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1B4D99432F8E960000127598 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1B4D99482F8E960000127598;
+			remoteInfo = PongWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -53,6 +62,9 @@
 		1B4D994F2F8E960000127598 /* PongWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PongWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B4D995E2F8E960300127598 /* PongWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PongWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B4D99682F8E960300127598 /* PongWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "PongWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		28F8F5D17DB467EF65CB93DD /* RefundIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RefundIntegrationTests.swift; sourceTree = "<group>"; };
+		5B538BFA61F56E9C902AAB79 /* PongWatchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PongWatchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		916B88FFCCF8D556CCFE0C7B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -84,11 +96,15 @@
 		};
 		1B4D99612F8E960300127598 /* PongWatch Watch AppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "PongWatch Watch AppTests";
 			sourceTree = "<group>";
 		};
 		1B4D996B2F8E960300127598 /* PongWatch Watch AppUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "PongWatch Watch AppUITests";
 			sourceTree = "<group>";
 		};
@@ -123,9 +139,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C4177D04DD0D1889E99830D3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBE977E7A2CC7597D2E7007F /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		09DD1E446BFA45C0A42196AE /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				916B88FFCCF8D556CCFE0C7B /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		1B4D99422F8E960000127598 = {
 			isa = PBXGroup;
 			children = (
@@ -133,6 +165,8 @@
 				1B4D99612F8E960300127598 /* PongWatch Watch AppTests */,
 				1B4D996B2F8E960300127598 /* PongWatch Watch AppUITests */,
 				1B4D994A2F8E960000127598 /* Products */,
+				47CC189F3084E0F1F94AEDCF /* Frameworks */,
+				5EF0503CB0A6A71AD243BD54 /* PongWatchTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -143,13 +177,49 @@
 				1B4D994F2F8E960000127598 /* PongWatch Watch App.app */,
 				1B4D995E2F8E960300127598 /* PongWatch Watch AppTests.xctest */,
 				1B4D99682F8E960300127598 /* PongWatch Watch AppUITests.xctest */,
+				5B538BFA61F56E9C902AAB79 /* PongWatchTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		47CC189F3084E0F1F94AEDCF /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				09DD1E446BFA45C0A42196AE /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5EF0503CB0A6A71AD243BD54 /* PongWatchTests */ = {
+			isa = PBXGroup;
+			children = (
+				28F8F5D17DB467EF65CB93DD /* RefundIntegrationTests.swift */,
+			);
+			name = PongWatchTests;
+			path = PongWatchTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		08AD824BDBBBA66A07F6994D /* PongWatchTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 57EDA8F18418EC0321BEED84 /* Build configuration list for PBXNativeTarget "PongWatchTests" */;
+			buildPhases = (
+				C83C3D80EF07F70AC5CFD203 /* Sources */,
+				C4177D04DD0D1889E99830D3 /* Frameworks */,
+				24BFFF5C3DB2CA5C5B3A04B2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				29AE869136D55E2C439480A9 /* PBXTargetDependency */,
+			);
+			name = PongWatchTests;
+			productName = PongWatchTests;
+			productReference = 5B538BFA61F56E9C902AAB79 /* PongWatchTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		1B4D99482F8E960000127598 /* PongWatch */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1B4D99762F8E960300127598 /* Build configuration list for PBXNativeTarget "PongWatch" */;
@@ -168,8 +238,6 @@
 				1B4D99532F8E960000127598 /* PongWatch Watch App */,
 			);
 			name = PongWatch;
-			packageProductDependencies = (
-			);
 			productName = PongWatch;
 			productReference = 1B4D99492F8E960000127598 /* PongWatch.app */;
 			productType = "com.apple.product-type.application";
@@ -190,8 +258,6 @@
 				1B4D99532F8E960000127598 /* PongWatch Watch App */,
 			);
 			name = "PongWatch Watch App";
-			packageProductDependencies = (
-			);
 			productName = "PongWatch Watch App";
 			productReference = 1B4D994F2F8E960000127598 /* PongWatch Watch App.app */;
 			productType = "com.apple.product-type.application";
@@ -213,8 +279,6 @@
 				1B4D99612F8E960300127598 /* PongWatch Watch AppTests */,
 			);
 			name = "PongWatch Watch AppTests";
-			packageProductDependencies = (
-			);
 			productName = "PongWatch Watch AppTests";
 			productReference = 1B4D995E2F8E960300127598 /* PongWatch Watch AppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -236,8 +300,6 @@
 				1B4D996B2F8E960300127598 /* PongWatch Watch AppUITests */,
 			);
 			name = "PongWatch Watch AppUITests";
-			packageProductDependencies = (
-			);
 			productName = "PongWatch Watch AppUITests";
 			productReference = 1B4D99682F8E960300127598 /* PongWatch Watch AppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -286,6 +348,7 @@
 				1B4D994E2F8E960000127598 /* PongWatch Watch App */,
 				1B4D995D2F8E960300127598 /* PongWatch Watch AppTests */,
 				1B4D99672F8E960300127598 /* PongWatch Watch AppUITests */,
+				08AD824BDBBBA66A07F6994D /* PongWatchTests */,
 			);
 		};
 /* End PBXProject section */
@@ -313,6 +376,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		1B4D99662F8E960300127598 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		24BFFF5C3DB2CA5C5B3A04B2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -350,6 +420,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C83C3D80EF07F70AC5CFD203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA2D5B83929C4F55B06E47CD /* RefundIntegrationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -367,6 +445,12 @@
 			isa = PBXTargetDependency;
 			target = 1B4D994E2F8E960000127598 /* PongWatch Watch App */;
 			targetProxy = 1B4D99692F8E960300127598 /* PBXContainerItemProxy */;
+		};
+		29AE869136D55E2C439480A9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = PongWatch;
+			target = 1B4D99482F8E960000127598 /* PongWatch */;
+			targetProxy = B2666A8C8A2133AAF2DB5FEC /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -492,8 +576,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = PongWatchWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
@@ -530,8 +614,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = PongWatchWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
@@ -567,12 +651,12 @@
 		1B4D99772F8E960300127598 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_ENTITLEMENTS = PongWatch.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
-				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PongWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 23;
+				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "PongWatch Watch App/Info.plist";
@@ -606,12 +690,12 @@
 		1B4D99782F8E960300127598 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_ENTITLEMENTS = PongWatch.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
-				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PongWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 23;
+				DEVELOPMENT_TEAM = 373QNLTN7Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "PongWatch Watch App/Info.plist";
@@ -735,6 +819,43 @@
 			};
 			name = Release;
 		};
+		8C66ABE61717837754AF2C2E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnadkerson.PongWatchTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PongWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PongWatch";
+			};
+			name = Debug;
+		};
+		E82DF3C58E6DC48E710958A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.johnadkerson.PongWatchTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PongWatch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PongWatch";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -779,6 +900,15 @@
 			buildConfigurations = (
 				1B4D997D2F8E960300127598 /* Debug */,
 				1B4D997E2F8E960300127598 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		57EDA8F18418EC0321BEED84 /* Build configuration list for PBXNativeTarget "PongWatchTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E82DF3C58E6DC48E710958A1 /* Release */,
+				8C66ABE61717837754AF2C2E /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

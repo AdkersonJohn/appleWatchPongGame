@@ -61,6 +61,21 @@ Add a case to `ScreenshotRoute`, render it in `screenshotScreen(_:)` in
 - **Test destinations must use a simulator UDID, not a name**, and the UDIDs
   change when Xcode updates. Resolve them with
   `xcodebuild -scheme "PongWatch Watch App" -showdestinations`.
-- `MultiplayerGameStateTests.test_disconnectDuringConfiguringMatchReturnsToPairingNotMatchOver`
-  is a known flaky test — a hardcoded ~50ms sleep race that predates current
-  work. A run failing only this one is green.
+- Two flaky tests live in `MultiplayerGameStateTests`, both timing races that
+  predate current work:
+  `test_disconnectDuringConfiguringMatchReturnsToPairingNotMatchOver` (a
+  hardcoded ~50ms sleep) and `test_hostAppliesIncomingPaddleInput`. The second
+  passed 3/3 in isolation on 2026-11-20 after failing in a full run. A run
+  failing only these is green — but re-run the named test alone before
+  believing that, rather than assuming.
+
+## Test targets
+
+- `PongWatch Watch AppTests` — the main suite, hosted by the watch app.
+- `PongWatchTests` — an **iOS** unit-test target hosted by the iPhone app. It
+  exists because StoreKit work needs a host that can present a purchase sheet.
+  The app's sources build for both platforms, so code tested here is the code
+  that ships on the watch.
+- `RefundIntegrationTests` lives in the iOS target and is skipped unless
+  `REFUND_INTEGRATION=1`: `product.purchase()` does not return under XCTest on
+  either platform. See the comment in that file before trying again.
